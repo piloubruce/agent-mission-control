@@ -1,0 +1,23 @@
+/* Sélection / copie au DOIGT (tablette Android) dans xterm.js.
+   Par défaut xterm pose user-select:none sur .xterm-rows, ce qui empêche le
+   menu natif « Copier » après appui long sur mobile. On réactive la sélection
+   sur la couche de texte tout en gardant le comportement souris de xterm. */
+.xterm .xterm-rows,
+.xterm .xterm-screen,
+.xterm .xterm-rows * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
+
+/* Le scroll tactile doit rester possible dans le viewport. */
+.xterm .xterm-viewport {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Sélection bien visible sur fond stone-950. */
+.xterm .xterm-selection div {
+  background-color: #57534e !important;
+  opacity: 0.55;
+}

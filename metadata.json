@@ -1,0 +1,8 @@
+{
+  "name": "Hermès Agent Dashboard",
+  "description": "Tableau de bord pour la gestion des agents IA Hermès (Coordinateur, Rédacteur, Chercheur, Réseau, Développeur) avec planification des tâches et documentation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
