@@ -45,7 +45,18 @@ const pad = (n: number) => String(n).padStart(2, '0');
 // Parse une expression cron existante pour pré-remplir l'interface
 export const parseCron = (schedule?: string): ScheduleEditorState => {
   const s = (schedule || '').trim();
-  // Intervalle : "30m", "120m", "2h", "1h30m"
+  // Intervalle texte : "30m", "120m", "2h", "1h30m", "every 2h", "once in 30m"
+  const mEvery = s.match(/^(?:every\s+|once\s+in\s+)(?:(\d+)h)?(?:(\d+)m)?$/i);
+  if (mEvery && (mEvery[1] !== undefined || mEvery[2] !== undefined)) {
+    const total = parseInt(mEvery[1] || '0', 10) * 60 + parseInt(mEvery[2] || '0', 10);
+    return {
+      ...DEFAULT_SCHEDULE_STATE,
+      mode: 'interval',
+      ivHours: Math.floor(total / 60),
+      ivMinutes: total % 60,
+    };
+  }
+  // Intervalle compact : "30m", "120m", "2h", "1h30m"
   const iv = s.match(/^(?:(\d+)h)?(?:(\d+)m)?$/);
   if (iv && (iv[1] !== undefined || iv[2] !== undefined)) {
     const total = parseInt(iv[1] || '0', 10) * 60 + parseInt(iv[2] || '0', 10);
