@@ -9,8 +9,6 @@
 // La connexion n'est ouverte qu'a la demande (premier abonne) et fermee quand
 // le dernier abonne se retire.
 
-import { getApiBase } from '../api';
-
 type Listener = (ev: MessageEvent) => void;
 
 const _typeListeners = new Map<string, Set<Listener>>();
@@ -28,9 +26,7 @@ function dispatch(type: string, ev: MessageEvent) {
 
 function ensure() {
   if (_es) return;
-  const base = getApiBase();
-  const sseUrl = base ? `${base}/events` : '/events';
-  _es = new EventSource(sseUrl, { withCredentials: true });
+  _es = new EventSource('/events');
   _es.onopen = () => {
     _connected = true;
     for (const fn of [..._openListeners]) fn();

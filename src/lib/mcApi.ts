@@ -14,7 +14,7 @@
  * On détecte le content-type et on retombe sur localStorage sans casser l'UI.
  */
 
-import { apiFetch, getApiBase } from '../api';
+import { apiFetch } from '../api';
 
 // ------------------------------------------------------------------ #4
 export interface McConfig {
@@ -126,13 +126,11 @@ export async function listFiles(dir = '', show_hidden = false): Promise<FileEntr
 }
 
 export function downloadFileUrl(path: string): string {
-  const base = getApiBase();
-  return `${base}/api/files/download?path=${encodeURIComponent(path)}`;
+  return `/api/files/download?path=${encodeURIComponent(path)}`;
 }
 
 export function viewFileUrl(path: string): string {
-  const base = getApiBase();
-  return `${base}/api/files/download?inline=1&path=${encodeURIComponent(path)}`;
+  return `/api/files/download?inline=1&path=${encodeURIComponent(path)}`;
 }
 
 export async function uploadFile(dir: string, file: File): Promise<{ ok: boolean }> {
@@ -169,12 +167,6 @@ export async function deleteFile(path: string): Promise<{ ok: boolean }> {
 
 /** URL du WebSocket terminal (#5), dérivée de l'origine courante. */
 export function terminalWsUrl(): string {
-  const base = getApiBase();
-  if (base) {
-    const wsProto = base.startsWith('https:') ? 'wss:' : 'ws:';
-    const host = base.replace(/^https?:\/\//, '');
-    return `${wsProto}//${host}/ws/terminal`;
-  }
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${location.host}/ws/terminal`;
 }
@@ -209,8 +201,7 @@ export async function listBackups(): Promise<{ ok: boolean; backups?: Array<{nam
 }
 
 export function downloadBackupUrl(filename: string): string {
-  const base = getApiBase();
-  return `${base}/api/mc/backup/download/${encodeURIComponent(filename)}`;
+  return `/api/mc/backup/download/${encodeURIComponent(filename)}`;
 }
 
 export async function restoreBackup(file: string): Promise<{ ok: boolean; msg?: string; error?: string }> {

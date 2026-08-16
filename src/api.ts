@@ -169,43 +169,12 @@ export interface ApiState {
   content: ContentFile[];
 }
 
-export const CUSTOM_API_BASE_KEY = 'hermes_custom_api_base';
-
-export function getApiBase(): string {
-  try {
-    return (localStorage.getItem(CUSTOM_API_BASE_KEY) || '').trim().replace(/\/+$/, '');
-  } catch {
-    return '';
-  }
-}
-
-export function setApiBase(url: string): void {
-  try {
-    const cleaned = url.trim().replace(/\/+$/, '');
-    if (cleaned) {
-      localStorage.setItem(CUSTOM_API_BASE_KEY, cleaned);
-    } else {
-      localStorage.removeItem(CUSTOM_API_BASE_KEY);
-    }
-  } catch {
-    // ignore
-  }
-}
-
 export async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<Response> {
-  const base = getApiBase();
-  const url = path.startsWith('http://') || path.startsWith('https://')
-    ? path
-    : (base ? `${base}${path.startsWith('/') ? path : '/' + path}` : path);
-
-  const isCrossOrigin = !!base && (typeof window !== 'undefined' ? !url.startsWith(window.location.origin) : true);
-
   const { timeoutMs, ...rest } = init ?? {};
   const ctrl = timeoutMs ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
   try {
-    return await fetch(url, {
-      credentials: isCrossOrigin ? 'include' : 'same-origin',
+    return await fetch(path, {
       ...(ctrl ? { signal: ctrl.signal } : {}),
       ...rest,
     });
