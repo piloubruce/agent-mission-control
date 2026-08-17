@@ -23,6 +23,29 @@
           "attachments": []
         }
       ]
+    },
+    {
+      "id": "msg_1787002210594_2702e00c",
+      "agent": "manager",
+      "title": "Moi je vais bien la journée a été un peu pourrie mais bon ça",
+      "created_at": 1787002211.093884,
+      "updated_at": 1787002221.5135348,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Moi je vais bien la journée a été un peu pourrie mais bon ça a quand même Était une bonne journée",
+          "ts": 1787002211.0938873,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Content que tu aies fini la journée sur une note quand même bonne. Si y’a un truc à faire tourner sur la flotte / le lab, je suis là. Sinon, bonne soirée.\n\nsession_id: 20260817_233011_77f31b",
+          "ts": 1787002221.513533,
+          "error": null,
+          "attachments": []
+        }
+      ]
     }
   ]
 }

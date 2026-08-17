@@ -1888,7 +1888,11 @@ export async function sendMessage(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       agent,
-      session_id: null,
+      // PILU (2026-08-17) : on transmet le session_id ouvert pour CONTINUER
+      // la conversation (--resume cote Hermes) au lieu de creer une nouvelle
+      // session a chaque message. Le backend gere deja ce cas (voir
+      // /api/messages/send : _provided = data.get("session_id")).
+      session_id: sessionId ?? null,
       text,
       files: files ?? [],
       persist,

@@ -606,9 +606,9 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
       onDone: (err) => {
         if (chatSseRef.current !== es) return; // flux perime : ignore
         chatSseRef.current = null;
-        // On garde l'etat visible avec running=false (-> coche VERTE) pendant
-        // 1.5s pour que l'utilisateur voie la fin, puis on nettoie. Sans ca,
-        // setLiveStatus(null) faisait disparaitre la bulle avant le vert.
+        // Fin : on marque running=false. Le rendu fusionne alors le live dans
+        // l'historique (plus de doublon). On nettoie liveStatus des que
+        // l'historique recharge (loadSessions ci-dessous) via le flag ci-dessous.
         setLiveStatus((prev) =>
           prev && prev.session_id === sessionId
             ? { ...prev, running: false, phase: null, error: err ?? prev.error }
@@ -621,13 +621,13 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
           return next;
         });
         if (err) setError(err);
-        loadSessions(agent, sessionId);
-        // Nettoyage differe : laisse le temps au rendu d'afficher la coche.
-        setTimeout(() => {
+        loadSessions(agent, sessionId).then(() => {
+          // Historique a jour : le message final y est. On retire le live pour
+          // eviter tout doublon visuel (le rendu fusionne deja pendant running).
           setLiveStatus((prev) =>
             prev && prev.session_id === sessionId ? null : prev,
           );
-        }, 1500);
+        });
       },
       onError: () => {
         // Le SSE coupe (ou close() apres done) : on retombe sur le poll UNIQUEMENT
@@ -975,17 +975,36 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
 
   // Session ouverte (objet complet).
   const openSessionObj = sessions.find((s) => s.id === currentSessionId) || null;
-  const streamingText = liveStatus?.text ?? openSessionObj?.live?.text ?? '';
-  const streamingRunning = liveStatus?.running ?? openSessionObj?.live?.running ?? false;
+  // liveRunning/liveText remplacent les anciens streamingRunning/streamingText :
+  // le texte live est fusionne dans displayMessages (pas de bloc parallele).
+  const liveRunning = !!liveStatus && liveStatus.running;
+  const liveText = liveStatus?.text ?? '';
 
-  // FIX MC DASHBOARD dev16: le user msg disparait QUAND l'agent repond.
-  // On garantit que le user msg reste visible en permanence, meme apres la reponse.
-  // Solution: displayMessages merge les messages de la session avec pendingUser (en fallback).
-  // Si pendingUser existe et n'est pas dans les messages, on l'ajoute.
+  // FIX doublon (2026-08-17) : on fusionne le live DANS l'historique au lieu
+  // d'afficher un bloc parallele. Tant que running=true, le dernier message
+  // agent de la session courante est remplace par le texte live (avec coche
+  // bleue). Des que running=false, on rend l'historique normal (le message
+  // final y est deja). Plus AUCUN doublon possible.
   const displayMessages = useMemo(() => {
     let base = openSessionObj?.messages || [];
     if (pendingUser && !base.some((m: any) => m.role === 'user' && m.text === pendingUser)) {
       base = [...base, { role: 'user', text: pendingUser, ts: Date.now() / 1000 }];
+    }
+    // Fusion live -> remplace le dernier message agent par le live (si running).
+    if (liveStatus && liveStatus.running && liveStatus.text) {
+      const copy = base.slice();
+      // Trouve le dernier index agent.
+      let lastAgent = -1;
+      for (let i = copy.length - 1; i >= 0; i--) {
+        if (copy[i].role === 'agent') { lastAgent = i; break; }
+      }
+      if (lastAgent >= 0) {
+        copy[lastAgent] = { ...copy[lastAgent], text: liveStatus.text };
+      } else {
+        // Pas encore de message agent persiste : on ajoute le live en fin.
+        copy.push({ role: 'agent', text: liveStatus.text, ts: Date.now() / 1000 });
+      }
+      base = copy;
     }
     // Filtre global MESSAGES : mot-cle (keyword) + plage de dates.
     const kw = msgFilter.keyword.trim().toLowerCase();
@@ -1001,7 +1020,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
       });
     }
     return base;
-  }, [openSessionObj, pendingUser, msgFilter]);
+  }, [openSessionObj, pendingUser, msgFilter, liveStatus]);
 
   // Modele actif de l'agent selectionne : priorite a la session ouverte
   // (provider/model reellement utilises), repli sur la fiche flotte.
@@ -1106,7 +1125,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                     <Loader2 className="w-4 h-4 animate-spin" /> chargement…
                   </div>
                 )}
-                {!loadingSessions && displayMessages.length === 0 && !streamingRunning && (
+                {!loadingSessions && displayMessages.length === 0 && !liveRunning && (
                   <div className="text-stone-600">
                     # session vide — tapez un message ci-dessous.
                   </div>
@@ -1114,6 +1133,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
 
                 {displayMessages.map((m, i) => {
                   const isUser = m.role === 'user';
+                  const isLastAgent = !isUser && i === displayMessages.length - 1 && !displayMessages.slice(i + 1).some((x: any) => x.role === 'agent');
                   const ts = m.ts
                     ? new Date(m.ts * 1000).toLocaleString('fr-FR', {
                         day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
@@ -1132,6 +1152,9 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                           <span className="text-[10px] text-stone-600">{ts}</span>
                           <div className={`whitespace-pre-wrap break-words ${isUser ? 'text-orange-100' : 'text-stone-200'}`}>
                             {!isUser ? <AgentMessageBody text={m.text} /> : m.text}
+                            {!isUser && liveRunning && isLastAgent && (
+                              <span className="inline-block w-2 h-4 align-middle ml-0.5 bg-stone-300 animate-pulse" />
+                            )}
                           </div>
                           {isUser && renderAttachments(m.attachments, (p) => handleDeleteAttachment(i, p))}
                           {m.error && (
@@ -1157,7 +1180,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
-                            {!isUser && <StatusDot running={false} />}
+                            {!isUser && <StatusDot running={liveRunning && isLastAgent} phase={liveStatus?.phase} />}
                           </div>
                         </div>
                       </div>
@@ -1165,41 +1188,24 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                   );
                 })}
 
-                {/* Streaming live — reste affiche jusqu'a nettoyage (1.5s apres
-                    done) pour montrer la coche VERTE de fin, pas seulement
-                    pendant la generation. */}
-                {liveStatus && (
-                  <div className="mb-3">
-                    <div className="flex items-start gap-2">
-                      <span className="shrink-0 select-none text-cyan-400">◦</span>
-                      <div className="min-w-0 flex-1">
-                        <span className="text-[10px] uppercase tracking-widest mr-2 text-cyan-500/80">agent</span>
-                        <div className="whitespace-pre-wrap break-words text-stone-200">
-                          {streamingText ? (
-                            <>
-                              {streamingText}
-                              {streamingRunning && (
-                                <span className="inline-block w-2 h-4 align-middle ml-0.5 bg-stone-300 animate-pulse" />
-                              )}
-                            </>
-                          ) : (
-                            <span className="flex items-center gap-2 text-stone-500">
-                              <Loader2 className="w-4 h-4 animate-spin" /> en cours…
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-0.5 flex items-center gap-2">
-                          {streamingText && <CopyButton text={streamingText} />}
-                          <StatusDot running={streamingRunning} phase={liveStatus?.phase} />
-                        </div>
-                      </div>
+                {/* Indicateur de generation tant que le 1er token n'est pas encore
+                    dans l'historique (live vide). Le texte live lui-meme est deja
+                    fusionne dans displayMessages ci-dessus (pas de doublon). */}
+                {liveRunning && !liveText && (
+                  <div className="mb-3 flex items-start gap-2">
+                    <span className="shrink-0 select-none text-cyan-400">◦</span>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[10px] uppercase tracking-widest mr-2 text-cyan-500/80">agent</span>
+                      <span className="flex items-center gap-2 text-stone-500">
+                        <Loader2 className="w-4 h-4 animate-spin" /> en cours…
+                      </span>
                     </div>
                   </div>
                 )}
 
                 <div ref={convEndRef} />
 
-                {userScrolledUp && streamingRunning && (
+                {userScrolledUp && liveRunning && (
                   <button
                     type="button"
                     onClick={scrollToBottom}
@@ -1272,10 +1278,10 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
             />
             <button
               onClick={handleCancel}
-              disabled={!streamingRunning || cancelling}
+              disabled={!liveRunning || cancelling}
               title={cancelling ? 'Annulation…' : 'Annuler la generation'}
               className={`shrink-0 flex items-center gap-1 px-2.5 py-2 rounded text-xs font-mono transition-colors ${
-                streamingRunning && !cancelling
+                liveRunning && !cancelling
                   ? 'bg-red-700 text-white hover:bg-red-600'
                   : 'bg-stone-800 text-stone-600 cursor-not-allowed'
               }`}
