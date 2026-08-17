@@ -1707,15 +1707,12 @@ export const ScanTab: React.FC = () => {
   const testCheckedCount = testChecked.size;
   const capsActive = testingAll !== null
     || Object.keys(colState).some((k) => colState[k] === 'running');
-  // X = modeles coches dont la capacite a ete TESTEE DANS CETTE SESSION
-  // (present dans testedSession), PAS l'historique global (caps) — sinon le
-  // compteur partait de 54/92 (modeles deja testes par le passe) puis
-  // montait progressivement au lieu de partir de 0.
-  const capX = (() => {
-    let n = 0;
-    for (const k of testChecked) if (testedSession.has(k)) n++;
-    return n;
-  })();
+  // X = nombre de modeles TESTES DANS CETTE SESSION (present dans
+  // testedSession). On compte testedSession.size directement (et non
+  // l'intersection avec testChecked) car les modeles se decochent apres
+  // leur test -> l'ancienne intersection donnait toujours 0. Le total Y
+  // est figé dans testTotal (voir handleTestAll).
+  const capX = testedSession.size;
 
   // Indicateur visuel de tri (fleche) + style de l'en-tete actif.
   const sortArrow = (col: 'provider' | 'model' | 'latency' | 'tps' | 'score' | 'last_checked' | 'caps_checked') =>
