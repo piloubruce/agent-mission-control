@@ -8821,6 +8821,15 @@ def _messages_send_bg(agent: str, sid: str, user_text: str, files: list,
     # fail auth. Revert to native profile; history isolation will be reworked by
     # the debug agent separately.
     cmd = [hermes_bin, "chat", "-p", _hermes_profile(agent), "-q", full_prompt, "-Q", "--reasoning", "none"]
+    # PILU (2026-08-18) : hermes chat en mode non-TTY bufferise sa stdout par
+    # blocs -> le fichier de sortie reste vide jusqu'a la fin -> le streaming
+    # token-par-token ne livre rien en direct (reponse visible qu'au refresh).
+    # On force le line-buffering via stdbuf -oL pour que chaque ligne soit
+    # ecrite immediatement dans le fichier, donc lus par la boucle de streaming.
+    import shutil as _shutil
+    _stdbuf = _shutil.which("stdbuf")
+    if _stdbuf:
+        cmd = [_stdbuf, "-oL", *cmd]
     if eff_model:
         cmd += ["-m", eff_model]
     if eff_provider:
@@ -8865,6 +8874,7 @@ def _messages_send_bg(agent: str, sid: str, user_text: str, files: list,
         # longue, largement suffisant pour ne PAS tuer une reponse legitime.
         _hard_deadline = time.time() + 1800.0
         _emitted_len = 0  # longueur deja poussee au SSE (pour diff incremental)
+        _emitted_text = ""  # contenu deja pousse au SSE (pour dedup doublon)
         while proc.poll() is None:
             # hermes chat (non-TTY) ne ferme pas toujours son stdout -> le
             # subprocess parent reste vivant meme apres la generation. On lit
@@ -8888,15 +8898,30 @@ def _messages_send_bg(agent: str, sid: str, user_text: str, files: list,
                     _live["text"] = _content
                     _live["running"] = True
                     _live["ts"] = time.time()
+                    _live["text"] = _content
                     _MESSAGES_LIVE[key] = _live
-                # STREAMING INCREMENTAL (piloubruce 2026-08-17) : on pousse
-                # UNIQUEMENT le delta depuis le dernier envoi, pour que le
-                # frontend affiche le texte token-par-token (et non en bloc a
-                # la fin). _sse_push bufferise + reveille l'abonne SSE.
-                if len(_content) > _emitted_len:
-                    _delta = _content[_emitted_len:]
-                    _emitted_len = len(_content)
-                    _sse_push(agent, sid, _delta)
+                # STREAMING INCREMENTAL (piloubruce 2026-08-17) : on pousse le
+                # NOUVEAU texte depuis le dernier envoi. hermes chat peut
+                # re-ecrire le fichier (vider + re-remplir) -> on ne se base
+                # PAS sur la longueur mais sur le contenu deja emis pour eviter
+                # les doublons (sinon le texte est pousse 2x et l'UI l'affiche
+                # en double).
+                if _content and _content != _emitted_text:
+                    # Calcul du vrai nouveau suffixe : si _content se termine par
+                    # _emitted_text (le fichier a ete re-rempli avec le meme
+                    # texte + ajout), on pousse seulement l'ajout. Sinon (cas
+                    # simple : fichier grandit), on pousse la difference.
+                    if _emitted_text and _content.endswith(_emitted_text):
+                        _delta = _content[len(_emitted_text):]
+                    elif _emitted_text and _content.startswith(_emitted_text):
+                        _delta = _content[len(_emitted_text):]
+                    else:
+                        # Contenu different (re-ecriture complete) : on pousse
+                        # tout sauf si c'est identique a ce qu'on a deja emis.
+                        _delta = _content if _content != _emitted_text else ""
+                    if _delta:
+                        _emitted_text = _content
+                        _sse_push(agent, sid, _delta)
             except Exception:
                 pass
             time.sleep(0.4)

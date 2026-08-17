@@ -131,12 +131,12 @@ const StatusDot: React.FC<{ running: boolean; phase?: string | null }> = ({
     <span
       title={
         finalizing
-          ? 'finalisation en cours (actions en arriere-plan)'
+          ? 'finalisation en cours (actions en arrière-plan)'
           : running
-            ? 'en cours de generation'
-            : 'reponse terminee'
+            ? 'en cours de génération'
+            : 'réponse terminée'
       }
-      className={`ml-auto shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-medium ${
+      className={`shrink-0 flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-medium ${
         finalizing
           ? 'bg-orange-500/20 text-orange-300'
           : running
@@ -151,7 +151,7 @@ const StatusDot: React.FC<{ running: boolean; phase?: string | null }> = ({
       ) : (
         <Check className="w-3 h-3" />
       )}
-      {finalizing && <span>finalisation…</span>}
+      {finalizing && <span className="sr-only">finalisation…</span>}
     </span>
   );
 };
