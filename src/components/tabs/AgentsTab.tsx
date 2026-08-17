@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useApiState } from '../../api';
 import { getAgentsOrder, setAgentsOrder } from '../../api';
 import { FLEET_STATIC } from '../../types';
@@ -15,18 +15,58 @@ export const AgentsTab: React.FC<{ onAgentClick?: (agent: string) => void }> = (
   const [multiModalOpen, setMultiModalOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [skillAgent, setSkillAgent] = useState<string | null>(null);
+  const [batchModels, setBatchModels] = useState<Record<string, { model?: string; provider?: string }>>({});
 
   const fleet = state?.fleet ?? [];
   const workingAgents = state?.working_agents ?? [];
   const waitingAgents = state?.waiting_agents ?? [];
   const logsStats = state?.agentlogs_stats;
 
+  // Backfill models: if a fleet card has no defaultModel/modelProvider, try the
+  // dedicated /api/agent/model endpoint to read the Hermes profile config.
+  // This avoids "—" when /api/state has no cached model yet.
+  useEffect(() => {
+    let cancelled = false;
+    const agents = Array.from(new Set((fleet.length ? fleet : FLEET_STATIC).map((m) => m.agent)));
+    if (!agents.length) return;
+    fetch('/api/agent/model/batch')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((data) => {
+        if (cancelled) return;
+        const next: Record<string, { model?: string; provider?: string }> = {};
+        const items = Array.isArray(data?.results) ? data.results : [];
+        for (const item of items) {
+          if (!item || typeof item.agent !== 'string') continue;
+          const model = typeof item.model === 'string' && item.model.trim() ? item.model.trim() : undefined;
+          const provider = typeof item.provider === 'string' && item.provider.trim() ? item.provider.trim() : undefined;
+          if (model || provider) next[item.agent] = { model, provider };
+        }
+        setBatchModels(next);
+      })
+      .catch(() => { if (!cancelled) setBatchModels({}); });
+    return () => { cancelled = true; };
+  }, [fleet.length ? fleet.map((m) => m.agent).join(',') : '']);
+
+  const enrichedFleet = useMemo(() => {
+    const source = fleet.length ? fleet : FLEET_STATIC;
+    return source.map((item) => {
+      const existingModel = typeof item.defaultModel === 'string' ? item.defaultModel : undefined;
+      const existingProvider = typeof item.modelProvider === 'string' ? item.modelProvider : undefined;
+      const extra = batchModels[item.agent];
+      return {
+        ...item,
+        defaultModel: existingModel || extra?.model,
+        modelProvider: existingProvider || extra?.provider,
+      };
+    });
+  }, [fleet, batchModels]);
+
   // #2 — ordre des cartes agents persisté (drag & drop natif).
   // v1.17.141 : l'ordre est désormais persisté COTE SERVEUR (mc_config.json
   // via /api/fleet/agents_order) pour survivre à une navigation privée et
   // être partagé entre tous les navigateurs. Fallback localStorage si le
   // serveur ne répond pas. Le drag & drop natif reste géré par useDndOrder.
-  const baseList = fleet.length ? fleet : FLEET_STATIC;
+  const baseList = enrichedFleet.length ? enrichedFleet : FLEET_STATIC;
   // v1.17.141 : onCommit persiste l'ordre côté serveur (mc_config.json via
   // /api/fleet/agents_order) pour survivre à une navigation privée et être
   // partagé entre tous les navigateurs. Fallback localStorage dans le hook.
@@ -90,7 +130,7 @@ export const AgentsTab: React.FC<{ onAgentClick?: (agent: string) => void }> = (
         {dnd.ordered.map((agentId) => {
           const meta = baseList.find((m) => m.agent === agentId);
           if (!meta) return null;
-          const live = fleet.find((f) => f.agent === meta.agent);
+          const live = enrichedFleet.find((f) => f.agent === meta.agent);
           const working = !!live && workingAgents.includes(live.agent);
           const waiting = !!live && waitingAgents.includes(live.agent);
           const status = agentStatusFromStrings(working, waiting);
