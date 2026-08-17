@@ -88,6 +88,52 @@
           "attachments": []
         }
       ]
+    },
+    {
+      "id": "msg_1787006155399_e1b1d06c",
+      "agent": "manager",
+      "title": "dis bonjour en 2 mots",
+      "created_at": 1787006155.83287,
+      "updated_at": 1787006166.654302,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "dis bonjour en 2 mots",
+          "ts": 1787006155.8328748,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Bonjour piloubruce.\n\nsession_id: 20260818_003556_edb624",
+          "ts": 1787006166.6542988,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787006199853_fa64db73",
+      "agent": "manager",
+      "title": "reponds en 3 mots",
+      "created_at": 1787006200.2199023,
+      "updated_at": 1787006207.4479318,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "reponds en 3 mots",
+          "ts": 1787006200.2199051,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Ok, j'attends tes instructions.\n\nsession_id: 20260818_003640_1e036c",
+          "ts": 1787006207.447928,
+          "error": null,
+          "attachments": []
+        }
+      ]
     }
   ]
 }

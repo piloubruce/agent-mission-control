@@ -9007,9 +9007,12 @@ def _messages_send_bg(agent: str, sid: str, user_text: str, files: list,
                 except Exception:
                     _raw = ""
                 import re as _re
-                _m = _re.search(r"session_id:\s*([A-Za-z0-9_\-]+)", _raw)
-                if _m:
-                    _native_sid = _m.group(1)
+                # Le worker imprime parfois "Resumed session <ancienne>" au
+                # debut (reprise de la derniere session natif) puis le VRAI
+                # session_id de CE tour a la fin. On prend le DERNIER match.
+                _matches = _re.findall(r"session_id:\s*([A-Za-z0-9_\-]+)", _raw)
+                if _matches:
+                    _native_sid = _matches[-1]
                     _native_path = os.path.join(HERMES_HOME, "sessions", "%s.json" % _native_sid)
                     if os.path.isfile(_native_path):
                         try:
