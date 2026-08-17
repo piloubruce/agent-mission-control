@@ -8991,35 +8991,24 @@ def _messages_send_bg(agent: str, sid: str, user_text: str, files: list,
             sess["updated_at"] = time.time()
             _write_agent_sessions(agent, sessions)
             # ISOLATION SESSIONS MC (piloubruce 2026-08-18) : le worker
-            # `hermes chat -p <agent>` persiste aussi sa propre session dans
-            # ~/.hermes/sessions/ (natif). Le dashboard Hermes natif (port 9119)
-            # liste ce dossier -> les chats MC y apparaissent alors qu'ils
-            # doivent rester isolés dans agent-mission-control/sessions/.
-            # On supprime la session HERMES native correspondante (parse du
-            # session_id imprime en fin de sortie) pour qu'elle ne pollue pas
-            # l'historique Hermes agent. Le MC a deja sa copie dans son propre
-            # fichier, donc aucune perte.
+            # `hermes chat -p <agent>` persiste aussi sa session dans la base
+            # SQLite native ~/.hermes/sessions (celle que liste le dashboard
+            # Hermes agent). Le MC a DEJA sa propre base mc_messages.db + son
+            # fichier sessions/<agent>.json, donc on supprime la session native
+            # pour qu'elle ne pollue pas l'historique Hermes agent. On recupere
+            # l'id natif via `hermes sessions list -p <agent>` (dernier = celui
+            # du tour courant) puis `hermes sessions delete`.
             try:
-                _raw = ""
-                try:
-                    with open(_out_path, "r", encoding="utf-8", errors="ignore") as _rf:
-                        _raw = _rf.read()
-                except Exception:
-                    _raw = ""
-                import re as _re
-                # Le worker imprime parfois "Resumed session <ancienne>" au
-                # debut (reprise de la derniere session natif) puis le VRAI
-                # session_id de CE tour a la fin. On prend le DERNIER match.
-                _matches = _re.findall(r"session_id:\s*([A-Za-z0-9_\-]+)", _raw)
-                if _matches:
-                    _native_sid = _matches[-1]
-                    _native_path = os.path.join(HERMES_HOME, "sessions", "%s.json" % _native_sid)
-                    if os.path.isfile(_native_path):
-                        try:
-                            os.remove(_native_path)
-                            _chat_log("MC isolation: session hermes native supprimee %s" % _native_sid)
-                        except Exception as _e:
-                            _chat_log("MC isolation: echec suppression %s: %s" % (_native_sid, _e))
+                _native_sid = _query_session_list(agent)
+                if _native_sid:
+                    _del = [_resolve_hermes_bin(), "sessions", "delete",
+                            "-p", _hermes_profile(agent), _native_sid]
+                    _chat_log("MC isolation: suppression session hermes native %s" % _native_sid)
+                    try:
+                        subprocess.run(_del, env=_chat_env(), timeout=60,
+                                       capture_output=True, text=True)
+                    except Exception as _e:
+                        _chat_log("MC isolation: echec delete %s: %s" % (_native_sid, _e))
             except Exception as _e:
                 _chat_log("MC isolation cleanup error: %s" % _e)
         except Exception as exc:  # noqa: BLE001

@@ -134,6 +134,88 @@
           "attachments": []
         }
       ]
+    },
+    {
+      "id": "msg_1787006249292_8fe955a1",
+      "agent": "manager",
+      "title": "reponds en 3 mots",
+      "created_at": 1787006249.652938,
+      "updated_at": 1787006260.0717347,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "reponds en 3 mots",
+          "ts": 1787006249.6529408,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Fais ta demande.\n\nsession_id: 20260818_003730_5f1d8b",
+          "ts": 1787006260.071732,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787006292661_e0213444",
+      "agent": "manager",
+      "title": "teste apres isolation",
+      "created_at": 1787006293.1743019,
+      "updated_at": 1787006431.8447893,
+      "message_count": 4,
+      "messages": [
+        {
+          "role": "user",
+          "text": "teste apres isolation",
+          "ts": 1787006293.1743052,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "",
+          "ts": 1787006406.8793032,
+          "error": "hermes chat a echoue (rc=-9)",
+          "attachments": []
+        },
+        {
+          "role": "user",
+          "text": "Réponds moi juste 2 mots",
+          "ts": 1787006417.3712795,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Test réussi.\n\nsession_id: 20260818_004018_266395",
+          "ts": 1787006431.8447871,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787006344588_034bf0f8",
+      "agent": "manager",
+      "title": "test isolation reponse en 2 mots",
+      "created_at": 1787006344.9678268,
+      "updated_at": 1787006355.7869587,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "test isolation reponse en 2 mots",
+          "ts": 1787006344.9678302,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Test réussi.\n\nsession_id: 20260818_003905_80bb75",
+          "ts": 1787006355.7869558,
+          "error": null,
+          "attachments": []
+        }
+      ]
     }
   ]
 }
