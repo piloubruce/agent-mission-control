@@ -470,6 +470,10 @@ export const ScanTab: React.FC = () => {
   const [capsBusy, setCapsBusy] = useState<Record<string, boolean>>({});
   // Etat 'busy' global des boutons d'en-tete 'Tout tester' ('all'|'vision'|'reasoning'|'tools'|null).
   const [testingAll, setTestingAll] = useState<null | 'all' | 'vision' | 'reasoning' | 'tools'>(null);
+  // Total figé AU LANCEMENT d'une série de tests : ne doit PAS décroître quand
+  // les modèles se décochent. Le compteur "Testés X / Y" affiche X = modèles
+  // testés dans cette session, Y = total figé ici (et non testChecked.size).
+  const [testTotal, setTestTotal] = useState<number>(0);
   // v1.17.60 - ARRET PROPRE des series de tests de capacites.
   // Etat SUIVI PAR COLONNE (pas de flag global): 'running' = serie en cours,
   // 'stopping' = arret demande, on laisse finir le test deja parti puis on
@@ -1525,6 +1529,9 @@ export const ScanTab: React.FC = () => {
     setTestingAll(kind);
     // vFIX (2026-08-13) : on reinitialise le compteur de session.
     setTestedSession(new Set());
+    // FIX COMPTEUR : fige le total AU LANCEMENT (nombre de modeles coches
+    // avant tout decochage) => le compteur reste X / total figé, pas X / restant.
+    setTestTotal(testChecked.size);
     // File = modeles coches dans test_sel (recuperes via le store byKey).
     const queue: ScanModelResult[] = [...testChecked]
       .map((key) => scanSession.byKey[key])
@@ -2791,7 +2798,7 @@ export const ScanTab: React.FC = () => {
               {capsActive && testCheckedCount > 0 && (
                 <div className="bg-stone-900/50 border border-stone-800/50 rounded-xl flex items-center justify-center px-3 h-12">
                   <div className="text-center">
-                    <div className="text-lg font-serif text-stone-300">{capX} / {testCheckedCount}</div>
+                    <div className="text-lg font-serif text-stone-300">{capX} / {testTotal > 0 ? testTotal : testCheckedCount}</div>
                     <div className="text-[10px] uppercase tracking-widest text-stone-500 mt-0.5">
                       Testés
                     </div>
