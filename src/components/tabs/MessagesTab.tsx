@@ -649,6 +649,11 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
         }
       },
     });
+    // PILU (2026-08-17) : on stocke la ref SSE SINON la garde onDone/onError
+    // (`chatSseRef.current !== es`) echoue toujours -> onDone n'est jamais
+    // execute -> busyAgents jamais nettoye -> rond rouge persistant + doublon
+    // (le poll de secours affiche l'historique en parallele du live).
+    chatSseRef.current = es;
     if (!es) {
       // EventSource indisponible (vieux navigateur) : fallback poll.
       chatSseRef.current = null;
@@ -1198,8 +1203,14 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
-                            {!isUser && <StatusDot running={liveRunning && isLastAgent} phase={liveStatus?.phase} />}
                           </div>
+                          {/* Statut de generation : TOUJOURS visible (pas seulement
+                              au survol) pour le dernier message agent en cours. */}
+                          {!isUser && (
+                            <div className="mt-0.5">
+                              <StatusDot running={liveRunning && isLastAgent} phase={liveStatus?.phase} />
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

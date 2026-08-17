@@ -6,8 +6,8 @@
       "agent": "manager",
       "title": "salut comment tu vas",
       "created_at": 1787002698.482221,
-      "updated_at": 1787002936.3883762,
-      "message_count": 4,
+      "updated_at": 1787003791.750415,
+      "message_count": 6,
       "messages": [
         {
           "role": "user",
@@ -32,6 +32,19 @@
           "role": "agent",
           "text": "Noté. J’attends le prochain test ou consigne.\n\nsession_id: 20260817_234208_9e72a9",
           "ts": 1787002936.3883743,
+          "error": null,
+          "attachments": []
+        },
+        {
+          "role": "user",
+          "text": "Voilà bah je continue mes tests pour savoir si mon Dashboard de côté message fonctionne correctement",
+          "ts": 1787003731.694532,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Je vérifie le comportement live du Dashboard Messages, sans toucher au code.\n\nConstat :\n- `server.py` tourne bien sur `51763`\n- Les routes `/api/messages/sessions`, `/api/messages/status`, `/api/messages/send` existent\n- `_messages_send_bg` écrit bien le user turn + la réponse agent dans `sessions/<agent>.json`\n- `MessagesTab.tsx` affiche bien `finalizing` + pendingUser + fusion d’historique\n\nVérification rapide via l’API :\n1. `curl \"http://localhost:51763/api/messages/sessions?agent=manager\"`\n2. `curl -X POST \"http://localhost:51763/api/messages/send\" -H \"content-type: application/json\" -d '{\"agent\":\"manager\",\"text\":\"ping test dashboard messages\",\"session_id\":\"msg_test_dash_01\"}'`\n3. `curl \"http://localhost:51763/api/messages/status?agent=manager&session_id=msg_test_dash_01\"`\n4. `curl \"http://localhost:51763/api/messages/sessions?agent=manager\"` après réponse\n\nJe lance ces vérifications maintenant.\n\nsession_id: 20260817_235532_9672a8",
+          "ts": 1787003791.7504127,
           "error": null,
           "attachments": []
         }
