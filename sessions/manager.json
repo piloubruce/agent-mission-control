@@ -1,0 +1,28 @@
+{
+  "agent": "manager",
+  "sessions": [
+    {
+      "id": "msg_1787001519571_7d158294",
+      "agent": "manager",
+      "title": "salut",
+      "created_at": 1787001520.9676921,
+      "updated_at": 1787001539.034036,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "salut",
+          "ts": 1787001520.9677002,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Salut — je suis opérationnel. Qu’est-ce que tu veux faire maintenant ?\n\nsession_id: 20260817_231842_b12f3b",
+          "ts": 1787001539.0340343,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    }
+  ]
+}

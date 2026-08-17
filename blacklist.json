@@ -1,4 +1,24 @@
 {
+  "freellmapi": [
+    "glm-4.7-flash"
+  ],
+  "gemini": [
+    "gemini-flash-lite-latest",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-pro-preview",
+    "gemini-2.5-flash-lite",
+    "gemini-robotics-er-1.6-preview",
+    "gemini-flash-latest",
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3-flash-preview",
+    "gemini-2.5-pro",
+    "gemini-3.7-flash",
+    "gemini-3-pro-preview"
+  ],
   "nous": [
     "anthropic/claude-opus-4",
     "anthropic/claude-opus-4.1",
@@ -330,6 +350,10 @@
     "anthropic/claude-sonnet-5",
     "anthropic/claude-sonnet-5:batch",
     "~anthropic/claude-sonnet-latest"
+  ],
+  "nvidia": [
+    "nvidia/llama-3.3-70b-instruct",
+    "nvidia/llama-3.1-nemotron-70b-instruct"
   ],
   "omni-route": [
     "auto/best-chaos",
@@ -989,5 +1013,19 @@
     "stepfun/step-3.7-flash",
     "nvidia/nemotron-3-super-120b-a12b",
     "sakana/fugu-ultra"
+  ],
+  "zai": [
+    "glm-5.2",
+    "glm-5",
+    "glm-4-9b",
+    "glm-5.1",
+    "glm-5v-turbo",
+    "glm-5-turbo",
+    "glm-4.7",
+    "glm-4.5",
+    "glm-4.5-flash",
+    "glm-4.5-air",
+    "glm-4.6",
+    "glm-5.3"
   ]
 }

@@ -59,6 +59,7 @@
     "lmstudio": true,
     "ollama local": true,
     "omni-route": true,
+    "freellmapi": true,
     "moa": false,
     "openai-api": false,
     "xai-oauth": false,

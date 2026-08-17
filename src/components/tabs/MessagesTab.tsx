@@ -595,16 +595,25 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
     setLiveStatus({ agent, session_id: sessionId, running: true, text: '', error: null });
     const es = subscribeChatStream(agent, sessionId, {
       onToken: (chunk) => {
-        setLiveStatus((prev) =>
-          prev && prev.running
-            ? { ...prev, text: prev.text + chunk }
-            : { agent, session_id: sessionId, running: true, text: chunk, error: null },
-        );
+        setLiveStatus((prev) => {
+          const base =
+            prev && prev.session_id === sessionId
+              ? prev
+              : { agent, session_id: sessionId, running: true, text: '', error: null };
+          return { ...base, running: true, text: base.text + chunk };
+        });
       },
       onDone: (err) => {
         if (chatSseRef.current !== es) return; // flux perime : ignore
         chatSseRef.current = null;
-        setLiveStatus(null);
+        // On garde l'etat visible avec running=false (-> coche VERTE) pendant
+        // 1.5s pour que l'utilisateur voie la fin, puis on nettoie. Sans ca,
+        // setLiveStatus(null) faisait disparaitre la bulle avant le vert.
+        setLiveStatus((prev) =>
+          prev && prev.session_id === sessionId
+            ? { ...prev, running: false, phase: null, error: err ?? prev.error }
+            : { agent, session_id: sessionId, running: false, text: '', error: err ?? null, phase: null },
+        );
         setPendingUser(null);
         setBusyAgents((prev) => {
           const next = new Set(prev);
@@ -613,6 +622,12 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
         });
         if (err) setError(err);
         loadSessions(agent, sessionId);
+        // Nettoyage differe : laisse le temps au rendu d'afficher la coche.
+        setTimeout(() => {
+          setLiveStatus((prev) =>
+            prev && prev.session_id === sessionId ? null : prev,
+          );
+        }, 1500);
       },
       onError: () => {
         // Le SSE coupe (ou close() apres done) : on retombe sur le poll UNIQUEMENT
@@ -1150,8 +1165,10 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                   );
                 })}
 
-                {/* Streaming live */}
-                {streamingRunning && (
+                {/* Streaming live — reste affiche jusqu'a nettoyage (1.5s apres
+                    done) pour montrer la coche VERTE de fin, pas seulement
+                    pendant la generation. */}
+                {liveStatus && (
                   <div className="mb-3">
                     <div className="flex items-start gap-2">
                       <span className="shrink-0 select-none text-cyan-400">◦</span>
@@ -1161,7 +1178,9 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                           {streamingText ? (
                             <>
                               {streamingText}
-                              <span className="inline-block w-2 h-4 align-middle ml-0.5 bg-stone-300 animate-pulse" />
+                              {streamingRunning && (
+                                <span className="inline-block w-2 h-4 align-middle ml-0.5 bg-stone-300 animate-pulse" />
+                              )}
                             </>
                           ) : (
                             <span className="flex items-center gap-2 text-stone-500">
@@ -1171,7 +1190,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                         </div>
                         <div className="mt-0.5 flex items-center gap-2">
                           {streamingText && <CopyButton text={streamingText} />}
-                          <StatusDot running={true} phase={liveStatus?.phase} />
+                          <StatusDot running={streamingRunning} phase={liveStatus?.phase} />
                         </div>
                       </div>
                     </div>

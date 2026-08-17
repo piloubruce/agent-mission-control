@@ -8864,6 +8864,7 @@ def _messages_send_bg(agent: str, sid: str, user_text: str, files: list,
         # _finalize_deadline plus bas : 30 min de securite pour une generation
         # longue, largement suffisant pour ne PAS tuer une reponse legitime.
         _hard_deadline = time.time() + 1800.0
+        _emitted_len = 0  # longueur deja poussee au SSE (pour diff incremental)
         while proc.poll() is None:
             # hermes chat (non-TTY) ne ferme pas toujours son stdout -> le
             # subprocess parent reste vivant meme apres la generation. On lit
@@ -8877,17 +8878,25 @@ def _messages_send_bg(agent: str, sid: str, user_text: str, files: list,
                     except Exception: pass
                 break
             try:
+                try:
+                    with open(_out_path, "r") as _rf:
+                        _content = _rf.read()
+                except Exception:
+                    _content = ""
                 with _MESSAGES_LIVE_LOCK:
                     _live = _MESSAGES_LIVE.get(key, {"text": ""})
-                    try:
-                        with open(_out_path, "r") as _rf:
-                            _content = _rf.read()
-                    except Exception:
-                        _content = ""
                     _live["text"] = _content
                     _live["running"] = True
                     _live["ts"] = time.time()
                     _MESSAGES_LIVE[key] = _live
+                # STREAMING INCREMENTAL (piloubruce 2026-08-17) : on pousse
+                # UNIQUEMENT le delta depuis le dernier envoi, pour que le
+                # frontend affiche le texte token-par-token (et non en bloc a
+                # la fin). _sse_push bufferise + reveille l'abonne SSE.
+                if len(_content) > _emitted_len:
+                    _delta = _content[_emitted_len:]
+                    _emitted_len = len(_content)
+                    _sse_push(agent, sid, _delta)
             except Exception:
                 pass
             time.sleep(0.4)
