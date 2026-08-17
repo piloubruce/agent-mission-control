@@ -2,98 +2,88 @@
   "agent": "manager",
   "sessions": [
     {
-      "id": "msg_1787004568695_f140e48b",
+      "id": "msg_1787005630925_6d61d3c4",
       "agent": "manager",
-      "title": "salut ça va",
-      "created_at": 1787004569.1487596,
-      "updated_at": 1787005433.7512002,
-      "message_count": 10,
+      "title": "Salut j'aimerais que tu me répondes n'importe quoi mais sur ",
+      "created_at": 1787005631.471054,
+      "updated_at": 1787005829.9368,
+      "message_count": 5,
       "messages": [
         {
           "role": "user",
-          "text": "salut ça va",
-          "ts": 1787004569.1487627,
+          "text": "Salut j'aimerais que tu me répondes n'importe quoi mais sur une longueur de 10 lignes",
+          "ts": 1787005631.4710567,
           "attachments": []
         },
         {
           "role": "agent",
-          "text": "[mistral/mistral-medium-3-5] [422]: {\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"think\"],\"msg\":\"Extra inputs are not permitted\",\"input\":false}]} (reset after 3s)\n\nsession_id: 20260818_000929_7ca8e2",
-          "ts": 1787004586.8089237,
-          "error": "hermes chat a echoue (rc=1)",
-          "attachments": []
-        },
-        {
-          "role": "user",
-          "text": "salut",
-          "ts": 1787004627.3466554,
-          "attachments": []
-        },
-        {
-          "role": "agent",
-          "text": "HTTP 400: [400]: property 'think' is unsupported\n\nsession_id: 20260818_001028_d87c91",
-          "ts": 1787004634.2422647,
-          "error": "hermes chat a echoue (rc=1)",
-          "attachments": []
-        },
-        {
-          "role": "user",
-          "text": "salut",
-          "ts": 1787004833.2299995,
-          "attachments": []
-        },
-        {
-          "role": "agent",
-          "text": "Salut ! Tout roule de mon côté. Tu as besoin de quelque chose ?\n\nsession_id: 20260818_001354_b415ed",
-          "ts": 1787004844.4550707,
+          "text": "Salut ! Alors voilà, je te pond un petit texte de dix lignes comme demandé, purement pour le plaisir de remplir l'espace sans avoir une vraie consigne derrière. Les chats d'IA sont drôles comme ça, parfois on leur demande juste de bavarder pour voir ce qu'ils vont sortir. Le café refroidit lentement sur le bord de la fenêtre pendant que la pluie tape contre les carreaux. Quelque part dans le jardin, un oiseau essaie désespérément de chanter malgré le bruit de la circulation. Les nuages gris promettent une après-midi lugubre mais paisible. Je me demande ce que tu vas faire de ces dix lignes une fois qu'elles seront écrites. Peut-être les garder comme preuve que l'on peut perdre du temps intelligemment. Ou alors les effacer aussitôt, comme on balaie des miettes de table. En tout cas c'est fait, et moi je suis content d'avoir papoté un peu. À la prochaine, et n'hésite pas si tu as un vrai truc à me demander !\n\nsession_id: 20260818_002712_653474",
+          "ts": 1787005641.5147686,
           "error": null,
           "attachments": []
         },
         {
           "role": "user",
-          "text": "Donc là je continue à te parler Histoire de pouvoir vérifier des choses moi même",
-          "ts": 1787005357.676641,
+          "text": "Alors je sais pas comment tu comptes les lignes Bon c'est vrai qu'après ça dépend de la largeur de l'écran Mais malheureusement moi j'en ai que 5",
+          "ts": 1787005670.30721,
           "attachments": []
         },
         {
           "role": "agent",
-          "text": "Compris. Tu testes/verifies de ton côté en continuant la discussion — pas de problème, je reste dispo.\n\nPour info, le contexte de la session (ID 20260818_001354_b415ed) est bien récupéré : les 3 premiers messages avaient juste un bug d'API (paramètre `think` non supporté par le modèle mistral-medium-3-5), réglé depuis.\n\nTu peux poser ce que tu veux vérifier, je réponds et j'exécute si besoin.\n\nsession_id: 20260818_002238_d934cf",
-          "ts": 1787005372.5291343,
+          "text": "Tu as raison, je me suis fait avoir : dans un terminal, \"lignes\" = lignes de rendu, donc ça dépend de la largeur de ta fenêtre. Mon bloc de 10 phrases s'est affiché en 5 lignes chez toi parce que ton écran est large et que le texte s'est wrapping sur moins de lignes que prévu.\n\nMon compte était sur le nombre de phrases/séparateurs, pas sur le rendu visuel. C'est un vrai piège : je ne vois pas la largeur de ton terminal, donc je ne peux pas garantir un nombre de lignes affichées.\n\nSi tu veux vraiment 10 lignes visibles, la seule façon fiable c'est de forcer un retour à la ligne à chaque phrase (un `\\n` explicite), pas de compter sur le wrapping auto.\n\nExemple avec des sauts de ligne réels :\n\n1. Salut, on retry le coup des dix lignes.\n2. Cette fois je force le retour chariot.\n3. Comme ça peu importe la largeur de ton écran.\n4. Chaque phrase occupe sa propre ligne.\n5. C'est beaucoup plus prévisible.\n6. Le wrapping ne peut plus nous piéger.\n7. Tu devrais voir dix lignes bien nettes.\n8. Même sur un terminal large.\n9. Ou un terminal étroit d'ailleurs.\n10. Voilà, mission accomplie pour de vrai.\n\nSi tu préfères, je peux te générer ça avec des vrais `\\n` à la demande pour tes prochains tests.\n\nsession_id: 20260818_002751_4442a8",
+          "ts": 1787005688.8466594,
           "error": null,
           "attachments": []
         },
         {
           "role": "user",
-          "text": "Par contre pourquoi je vois plus Le début de ta réponse quand tu réfléchis",
-          "ts": 1787005419.1842914,
+          "text": "OK par contre j'aimerais que tu regardes dans mon dashboard MC, Parce que j'ai un petit souci pendant que tu es en train de réfléchir, Avant de me répondre, Dans l'historique chat J'ai mes historiques qui sautillent C'est on voit un petit décalage il remonte il redescend il remonte il redescend et c'est très désagréable Donc je sais pas ce qui pose ce problème là mais il faut le corriger",
+          "ts": 1787005829.9367986,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787006059300_e61bf392",
+      "agent": "manager",
+      "title": "teste session 1",
+      "created_at": 1787006059.868658,
+      "updated_at": 1787006079.5018275,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "teste session 1",
+          "ts": 1787006059.8686612,
           "attachments": []
         },
         {
           "role": "agent",
-          "text": "C'est le souci que tu as vu tout à l'heure dans l'historique : sur les 2 premiers messages, le modèle (mistral-medium-3-5) a renvoyé une erreur API parce que le client envoyait un paramètre `think` que ce modèle ne supporte pas (`extra_forbidden` / `property 'think' is unsupported`).\n\nConcrètement :\n- Quand le backend plante sur ce paramètre, la réponse ne se génère pas et le début du raisonnement/stream ne s'affiche pas — d'où le trou que tu observes au démarrage de la réponse.\n- Depuis le 3e message (001354), le paramètre est géré correctement et tu revois le déroulé normal.\n\nDonc ce n'est pas un réglage de ton côté : c'était un bug de compatibilité modèle ↔ paramètre `think` sur les premiers échanges de la session, corrigé en cours de route. Si tu veux, je peux vérifier dans la config du profil si le paramètre `think` est forcé pour ce modèle et le désactiver proprement pour éviter que ça recommence sur d'autres sessions.\n\nsession_id: 20260818_002340_a75047",
-          "ts": 1787005433.7511964,
+          "text": "Test session 1 confirmé et exécuté.\n\nRésultat:\n- Utilisateur: piloubruce\n- Hôte: debian (VM 192.168.1.240)\n- Répertoire: /home/piloubruce/agent-mission-control\n- Date: mar. 18 août 2026 00:34 CEST\n- Session Hermes active: OK, outil session_search répond (3 sessions récentes listées dont 1 cron)\n\nTout fonctionne côté session CLI. Tu veux tester quoi d'autre en session 1 (dashboard MC, un agent de la flotte, un skill) ?\n\nsession_id: 20260818_003420_8f03d5",
+          "ts": 1787006079.5018237,
           "error": null,
           "attachments": []
         }
       ]
     },
     {
-      "id": "msg_1787005386395_b97065e5",
+      "id": "msg_1787006090179_d27f0dd8",
       "agent": "manager",
-      "title": "reponds en 3 mots",
-      "created_at": 1787005386.6993382,
-      "updated_at": 1787005393.916356,
+      "title": "teste session 2",
+      "created_at": 1787006090.9675891,
+      "updated_at": 1787006107.4151099,
       "message_count": 2,
       "messages": [
         {
           "role": "user",
-          "text": "reponds en 3 mots",
-          "ts": 1787005386.6993408,
+          "text": "teste session 2",
+          "ts": 1787006090.9675927,
           "attachments": []
         },
         {
           "role": "agent",
-          "text": "Bien reçu, j'attends.\n\nsession_id: 20260818_002307_457659",
-          "ts": 1787005393.9163537,
+          "text": "Test session 2 confirmé, exécuté au passé composé:\n\n- Session active: nouvelle session CLI (celle-ci) tourne sous profil default sur debian.\n- Heure locale: mar. 18 août 2026 00:34:59 CEST.\n- User: piloubruce / host: debian / cwd: /home/piloubruce/agent-mission-control.\n- Sessions récentes listées: \"teste session 1\" (5 msg), \"Écrire 10 lignes aléatoires\" (18 msg), et une session vide (2 msg). Tout est bien persisté en base.\n\nLe mécanisme de session fonctionne: cette session 2 est bien isolée de la session 1 et enregistrée. Tu veux que je teste autre chose (reprise de contexte, delegation, ou un appel réel d'un agent) ?\n\nsession_id: 20260818_003451_6f0546",
+          "ts": 1787006107.4151053,
           "error": null,
           "attachments": []
         }

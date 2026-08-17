@@ -516,14 +516,22 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
     setUserScrolledUp(distanceFromBottom(el) > BOTTOM_THRESHOLD);
   }, []);
 
-  // Effet de scroll auto : ne s'applique QUE si l'utilisateur est en bas
+  // Effet de scroll auto : ne s'applique QUE si l'utilisateur est deja en bas
   // (userScrolledUp = false). Quand il a remonte, on ne fait rien (il garde
-  // sa position de lecture). Déclencheurs : nouveau message, texte streamé,
-  // changement de session.
+  // sa position de lecture). On ne force le scroll QUE si on est deja en bas
+  // (distance <= seuil) : ca empeche l'oscillation « remonte/redescend » qui
+  // survenait quand ce hook se declenchait a chaque setSessions/setLiveStatus
+  // (poll SSE 1.5s + rechargement SSE chat) sur un conteneur dont la hauteur
+  // changeait a chaque re-render. Désormais : on ne pousse le bas que si on y
+  // etait deja, sinon on laisse la position intacte (aucun sautillement).
   useEffect(() => {
     if (userScrolledUp) return; // lecture libre : pas d'auto-scroll
     const el = convScrollRef.current;
     if (!el) return;
+    // Ne scrolle vers le bas que si on est deja en bas (tolerance seuil).
+    // Sinon on ne touche pas scrollTop -> pas de deplacement vers le haut
+    // qui provoquerait le sautillement.
+    if (distanceFromBottom(el) > BOTTOM_THRESHOLD) return;
     isProgrammaticScroll.current = true;
     el.scrollTop = el.scrollHeight;
     // On libere le flag apres le paint pour que le handler onScroll (qui

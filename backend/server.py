@@ -8820,7 +8820,7 @@ def _messages_send_bg(agent: str, sid: str, user_text: str, files: list,
     # creds (Anthropic instead of the nous fallback), causing every MC message to
     # fail auth. Revert to native profile; history isolation will be reworked by
     # the debug agent separately.
-    cmd = [hermes_bin, "chat", "-p", _hermes_profile(agent), "-q", full_prompt, "-Q", "--reasoning", "none"]
+    cmd = [hermes_bin, "chat", "-p", _hermes_profile(agent), "-q", full_prompt, "-Q", "--reasoning", "none", "--source", "mc"]
     # PILU (2026-08-18) : hermes chat en mode non-TTY bufferise sa stdout par
     # blocs -> le fichier de sortie reste vide jusqu'a la fin -> le streaming
     # token-par-token ne livre rien en direct (reponse visible qu'au refresh).
@@ -8990,6 +8990,35 @@ def _messages_send_bg(agent: str, sid: str, user_text: str, files: list,
             sess["message_count"] = len(sess["messages"])
             sess["updated_at"] = time.time()
             _write_agent_sessions(agent, sessions)
+            # ISOLATION SESSIONS MC (piloubruce 2026-08-18) : le worker
+            # `hermes chat -p <agent>` persiste aussi sa propre session dans
+            # ~/.hermes/sessions/ (natif). Le dashboard Hermes natif (port 9119)
+            # liste ce dossier -> les chats MC y apparaissent alors qu'ils
+            # doivent rester isolés dans agent-mission-control/sessions/.
+            # On supprime la session HERMES native correspondante (parse du
+            # session_id imprime en fin de sortie) pour qu'elle ne pollue pas
+            # l'historique Hermes agent. Le MC a deja sa copie dans son propre
+            # fichier, donc aucune perte.
+            try:
+                _raw = ""
+                try:
+                    with open(_out_path, "r", encoding="utf-8", errors="ignore") as _rf:
+                        _raw = _rf.read()
+                except Exception:
+                    _raw = ""
+                import re as _re
+                _m = _re.search(r"session_id:\s*([A-Za-z0-9_\-]+)", _raw)
+                if _m:
+                    _native_sid = _m.group(1)
+                    _native_path = os.path.join(HERMES_HOME, "sessions", "%s.json" % _native_sid)
+                    if os.path.isfile(_native_path):
+                        try:
+                            os.remove(_native_path)
+                            _chat_log("MC isolation: session hermes native supprimee %s" % _native_sid)
+                        except Exception as _e:
+                            _chat_log("MC isolation: echec suppression %s: %s" % (_native_sid, _e))
+            except Exception as _e:
+                _chat_log("MC isolation cleanup error: %s" % _e)
         except Exception as exc:  # noqa: BLE001
             _chat_log("messages persist failed agent=%s: %s" % (agent, exc))
     else:
