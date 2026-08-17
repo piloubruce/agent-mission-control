@@ -630,10 +630,21 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
         });
       },
       onError: () => {
-        // Le SSE coupe (ou close() apres done) : on retombe sur le poll UNIQUEMENT
-        // si ce flux est toujours l'actif. apres onDone, chatSseRef est deja null.
+        // Le SSE coupe (fin normale APRES done, ou coupure reseau). Dans les
+        // deux cas la generation est terminee -> on nettoie busyAgents pour
+        // que le rond rouge repasse VERT (sinon il reste rouge jusqu'au F5).
+        // On laisse un delai de grace : si onDone a deja tourne (chatSseRef
+        // null), il a deja nettoye -> on ne fait rien. Sinon on nettoie ici.
         if (chatSseRef.current === es) {
           chatSseRef.current = null;
+          setTimeout(() => {
+            setBusyAgents((prev) => {
+              if (!prev.has(agent)) return prev;
+              const next = new Set(prev);
+              next.delete(agent);
+              return next;
+            });
+          }, 600);
           startPolling(agent, sessionId);
         }
       },
@@ -848,6 +859,13 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
       // Sans ca, la question apparaissait 2x tant que l'agent repondait, et ne
       // "revenait" a 1 seule qu'au changement d'onglet (demontage/remontage).
       if (hasUserMsg) setPendingUser(null);
+      // La session n'est ecrite dans sessions/<agent>.json qu'apres le spawn
+      // du worker (quelques dizaines de ms apres send). Si le loadSessions
+      // ci-dessus ne l'a pas encore vue, on recharge la liste de droite apres
+      // un court delai pour qu'elle apparaisse SANS attendre le F5.
+      if (!sessions.some((s: any) => s.id === sid)) {
+        setTimeout(() => { loadSessions(activeAgent, sid); }, 700);
+      }
       // Demarre le streaming instantane de la reponse agent (SSE chat).
       startStreaming(activeAgent, sid);
     } catch (e) {

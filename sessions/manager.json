@@ -2,46 +2,36 @@
   "agent": "manager",
   "sessions": [
     {
-      "id": "msg_1787001519571_7d158294",
+      "id": "msg_1787002697968_a0dd8e22",
       "agent": "manager",
-      "title": "salut",
-      "created_at": 1787001520.9676921,
-      "updated_at": 1787001539.034036,
-      "message_count": 2,
+      "title": "salut comment tu vas",
+      "created_at": 1787002698.482221,
+      "updated_at": 1787002936.3883762,
+      "message_count": 4,
       "messages": [
         {
           "role": "user",
-          "text": "salut",
-          "ts": 1787001520.9677002,
+          "text": "salut comment tu vas",
+          "ts": 1787002698.4822233,
           "attachments": []
         },
         {
           "role": "agent",
-          "text": "Salut — je suis opérationnel. Qu’est-ce que tu veux faire maintenant ?\n\nsession_id: 20260817_231842_b12f3b",
-          "ts": 1787001539.0340343,
+          "text": "Salut, ça va bien. Prêt à bosser si t'as quelque chose à faire.\n\nsession_id: 20260817_233819_4e4bd2",
+          "ts": 1787002708.4992537,
           "error": null,
           "attachments": []
-        }
-      ]
-    },
-    {
-      "id": "msg_1787002210594_2702e00c",
-      "agent": "manager",
-      "title": "Moi je vais bien la journée a été un peu pourrie mais bon ça",
-      "created_at": 1787002211.093884,
-      "updated_at": 1787002221.5135348,
-      "message_count": 2,
-      "messages": [
+        },
         {
           "role": "user",
-          "text": "Moi je vais bien la journée a été un peu pourrie mais bon ça a quand même Était une bonne journée",
-          "ts": 1787002211.0938873,
+          "text": "Là c'est une série de tests",
+          "ts": 1787002927.571521,
           "attachments": []
         },
         {
           "role": "agent",
-          "text": "Content que tu aies fini la journée sur une note quand même bonne. Si y’a un truc à faire tourner sur la flotte / le lab, je suis là. Sinon, bonne soirée.\n\nsession_id: 20260817_233011_77f31b",
-          "ts": 1787002221.513533,
+          "text": "Noté. J’attends le prochain test ou consigne.\n\nsession_id: 20260817_234208_9e72a9",
+          "ts": 1787002936.3883743,
           "error": null,
           "attachments": []
         }
