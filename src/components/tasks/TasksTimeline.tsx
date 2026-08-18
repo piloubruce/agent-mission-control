@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import type { BoardTask } from '../../api';
-import { getBoard } from '../../api';
-import { Calendar, CheckCircle, Clock, AlertCircle, X } from 'lucide-react';
+import { Calendar, CheckCircle, Clock, AlertCircle, X, Check } from 'lucide-react';
 
 // Formatte une date sans dépendance externe (remplace date-fns).
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -18,7 +17,7 @@ interface TimelineViewProps {
   onExecute: (task: BoardTask) => void;
 }
 
-export const TasksTimeline: React.FC<TimelineViewProps> = ({ tasks, onUpdate, onDelete, onExecute }) => {
+export const TasksTimeline: React.FC<TimelineViewProps> = ({ tasks, onDelete, onExecute }) => {
   // Group tasks by day
   const tasksByDay = tasks.reduce<Record<string, BoardTask[]>>((acc, task) => {
     const day = task.created_at ? format(new Date(task.created_at * 1000), 'yyyy-MM-dd') : 'today';
@@ -32,10 +31,10 @@ export const TasksTimeline: React.FC<TimelineViewProps> = ({ tasks, onUpdate, on
   // Get status color
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'done': return 'text-emerald-500';
-      case 'doing': return 'text-cyan-400';
-      case 'todo': return 'text-orange-400';
-      default: return 'text-stone-400';
+      case 'done': return { text: 'text-emerald-500', dot: 'bg-emerald-500/20 border-emerald-500' };
+      case 'doing': return { text: 'text-cyan-400', dot: 'bg-cyan-400/20 border-cyan-400' };
+      case 'todo': return { text: 'text-orange-400', dot: 'bg-orange-400/20 border-orange-400' };
+      default: return { text: 'text-stone-400', dot: 'bg-stone-400/20 border-stone-400' };
     }
   };
 
@@ -68,7 +67,7 @@ export const TasksTimeline: React.FC<TimelineViewProps> = ({ tasks, onUpdate, on
                 .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
                 .map(task => {
                   const Icon = getStatusIcon(task.status);
-                  const colorClass = getStatusColor(task.status);
+                  const colors = getStatusColor(task.status);
                   
                   return (
                     <div 
@@ -77,7 +76,7 @@ export const TasksTimeline: React.FC<TimelineViewProps> = ({ tasks, onUpdate, on
                     >
                       {/* Status dot */}
                       <div className="absolute left-0 top-1">
-                        <div className={`w-3 h-3 rounded-full ${colorClass} bg-opacity-20 border border-${colorClass.replace('text-', '')}-400`} />
+                        <div className={`w-3 h-3 rounded-full border ${colors.dot}`} />
                       </div>
                       
                       {/* Task card */}
@@ -85,7 +84,7 @@ export const TasksTimeline: React.FC<TimelineViewProps> = ({ tasks, onUpdate, on
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
-                              <Icon className={`w-3 h-3 ${colorClass}`} />
+                              <Icon className={`w-3 h-3 ${colors.text}`} />
                               <h4 className="text-sm text-stone-300">{task.title}</h4>
                               {task.agent && (
                                 <span className="text-[10px] uppercase tracking-wider text-stone-500 border border-stone-700 rounded px-1.5 py-0.5">
@@ -137,6 +136,3 @@ export const TasksTimeline: React.FC<TimelineViewProps> = ({ tasks, onUpdate, on
     </div>
   );
 };
-
-// Import Check since we used it
-import { Check } from 'lucide-react';

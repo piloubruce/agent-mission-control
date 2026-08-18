@@ -277,7 +277,7 @@ export const TasksTab: React.FC = () => {
             disabled={anySelected('todo') === 0}
             className="inline-flex items-center gap-1.5 rounded-lg border border-stone-800 px-2.5 py-1.5 disabled:opacity-40 hover:border-stone-600"
           >
-            <Play className="w-3.5 h-3.5" /> Démarer
+            <Play className="w-3.5 h-3.5" /> Démarrer
           </button>
           <button
             onClick={() => bulkSetStatus('todo')}

@@ -28,12 +28,20 @@ export const MessagesSearch: React.FC<MessagesSearchProps> = ({ agents, onFilter
       onFilter({
         agent: agentFilter,
         keyword,
-        dateFrom: dateTo ? new Date(dateTo) : undefined,
-        dateTo: dateFrom ? new Date(dateFrom) : undefined,
+        dateFrom: dateFrom ? new Date(dateFrom) : undefined,
+        dateTo: dateTo ? new Date(dateTo) : undefined,
       });
     }, 300);
     return () => clearTimeout(timer);
   }, [keyword, agentFilter, dateFrom, dateTo, onFilter]);
+
+  const handleClear = () => {
+    setKeyword('');
+    setAgentFilter('');
+    setDateFrom(null);
+    setDateTo(null);
+    onClear();
+  };
 
   const hasActiveFilters = keyword || agentFilter || dateFrom || dateTo;
 
@@ -72,7 +80,7 @@ export const MessagesSearch: React.FC<MessagesSearchProps> = ({ agents, onFilter
         
         {hasActiveFilters && (
           <button
-            onClick={onClear}
+            onClick={handleClear}
             className="px-3 py-2 rounded-lg bg-stone-800 border border-stone-800 text-stone-400 hover:text-stone-300 transition-colors"
           >
             <X className="w-4 h-4" />

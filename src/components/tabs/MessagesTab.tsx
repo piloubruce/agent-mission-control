@@ -308,16 +308,110 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
   // Filtre par mot-cle (keyword) + plage de dates sur les messages affiches.
   const [msgFilter, setMsgFilter] = useState<MessageFilter>({ agent: '', keyword: '' });
 
-  // --- Largeur de la colonne sessions (resizable par poignee) ---
-  // Defaut large mais < 100% pour que la zone de conversation reste utilisable
-  // (en flexbox, width:100% sur cette colonne + flex-1 sur le chat cacherait le chat).
-  const [sessWidth, setSessWidth] = useState<string>('30%');
-  // true sur écrans >= md (768px). La largeur resizable inline n'est appliquée
-  // qu'en desktop ; sur mobile la colonne reste w-full (100%) via la classe.
-  const [isMd, setIsMd] = useState<boolean>(
-    typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
-  );
-  const draggingRef = useRef(false);
+  // --- Largeurs des colonnes resizables (Agents & Historique) avec persistance localStorage ---
+  const [agentsWidth, setAgentsWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('mc_messages_agents_width');
+      if (saved) {
+        const val = parseInt(saved, 10);
+        if (!isNaN(val) && val >= 140 && val <= 450) return val;
+      }
+    } catch { /* ignore */ }
+    return 208;
+  });
+
+  const [historyWidth, setHistoryWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('mc_messages_history_width');
+      if (saved) {
+        const val = parseInt(saved, 10);
+        if (!isNaN(val) && val >= 160 && val <= 500) return val;
+      }
+    } catch { /* ignore */ }
+    return 240;
+  });
+
+  const isDraggingAgents = useRef(false);
+  const isDraggingHistory = useRef(false);
+
+  // Gestionnaires de redimensionnement colonnes
+  const startResizeAgents = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingAgents.current = true;
+    const startX = e.clientX;
+    const startWidth = agentsWidth;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDraggingAgents.current) return;
+      const delta = ev.clientX - startX;
+      const newWidth = Math.min(Math.max(startWidth + delta, 140), 450);
+      setAgentsWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      isDraggingAgents.current = false;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      setAgentsWidth((w) => {
+        try { localStorage.setItem('mc_messages_agents_width', String(w)); } catch { /* ignore */ }
+        return w;
+      });
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  const startResizeHistory = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingHistory.current = true;
+    const startX = e.clientX;
+    const startWidth = historyWidth;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDraggingHistory.current) return;
+      const delta = startX - ev.clientX;
+      const newWidth = Math.min(Math.max(startWidth + delta, 160), 500);
+      setHistoryWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      isDraggingHistory.current = false;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      setHistoryWidth((w) => {
+        try { localStorage.setItem('mc_messages_history_width', String(w)); } catch { /* ignore */ }
+        return w;
+      });
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  // Timers gérés proprement sans fuite mémoire
+  const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  const safeTimeout = useCallback((fn: () => void, delay: number) => {
+    const timer = setTimeout(() => {
+      timersRef.current.delete(timer);
+      fn();
+    }, delay);
+    timersRef.current.add(timer);
+    return timer;
+  }, []);
+
+  const clearAllTimeouts = useCallback(() => {
+    timersRef.current.forEach((t) => clearTimeout(t));
+    timersRef.current.clear();
+  }, []);
 
   // Refs
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -325,37 +419,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
   // quand EventSource est dispo. Un seul flux actif a la fois.
   const chatSseRef = useRef<EventSource | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const convEndRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-
-  // -------------------------------------------------------------------------
-  // Redimensionnement de la colonne sessions via poignee (bord droit).
-  // On suit la souris a la fenetre et on borne la largeur entre 200px et 80%
-  // du conteneur. Les listeners sont ajoutes/retires proprement.
-  // -------------------------------------------------------------------------
-  const startResize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    draggingRef.current = true;
-    const onMove = (ev: MouseEvent) => {
-      if (!draggingRef.current || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      let w = ev.clientX - rect.left;
-      const min = 200;
-      // Borne max = 80% de la largeur INTERNE du conteneur (jamais un % qui
-      // déborde). On stocke toujours des PIXELS, jamais un % après le drag.
-      const max = containerRef.current.clientWidth * 0.8;
-      if (w < min) w = min;
-      if (w > max) w = max;
-      setSessWidth(`${Math.round(w)}px`);
-    };
-    const onUp = () => {
-      draggingRef.current = false;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
 
   // -------------------------------------------------------------------------
   // Charge la liste d'agents depuis le backend (dynamique, jamais en dur).
@@ -382,17 +446,6 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
   }, []);
 
   // -------------------------------------------------------------------------
-  // sync() tourne une fois au montage pour garantir que isMd est correct
-  // (et donc width:30% applique) des le premier rendu sur desktop.
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px)');
-    const onChange = () => setIsMd(mq.matches);
-    onChange(); // applique l'etat initial immediatement
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
-
-  // -------------------------------------------------------------------------
   // Charge les sessions de l'agent actif, puis reprend un eventuel stream en
   // cours (anti-coupure : le subprocess tourne cote serveur meme si on a
   // change d'onglet/agent entre-temps).
@@ -401,9 +454,6 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
     setLoadingSessions(true);
     try {
       const data = await getMessageSessions(agent);
-      // getMessageSessions renvoie deja des MessageSession (type complet) —
-      // le cast {id, started_at?} cassait le typecheck et masquait `live`
-      // (audit 2026-08-07).
       const list = data.sessions || [];
       // Trie par date decroissante (created_at, fallback timestamp dans l'id).
       const _ts = (s: MessageSession) => {
@@ -436,38 +486,28 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
     }
   };
 
-  // Recharge les sessions a chaque changement d'agent actif, et ouvre
-  // directement la session la plus recente (par timestamp dans l'id).
+  // Recharge les sessions a chaque changement d'agent actif (appel réseau unique).
   useEffect(() => {
     if (!activeAgent) return;
     try { localStorage.setItem('mc_messages_agent', activeAgent); } catch { /* ignore */ }
     stopPolling();
     stopStreaming();
+    clearAllTimeouts();
     setLiveStatus(null);
     setSelected(new Set());
     setSelectMode(false);
-    (async () => {
-      try {
-        const data = await getMessageSessions(activeAgent);
-        const list = data.sessions || [];
-        const _ts = (s: MessageSession) => {
-          const m = /^msg_(\d+)/.exec(s.id || '');
-          return m ? parseInt(m[1], 10) : 0;
-        };
-        const sorted = [...list].sort((a, b) => _ts(b) - _ts(a));
-        // Ouvre la plus recente sans jamais repasser par null.
-        setCurrentSessionId(sorted.length ? sorted[0].id : null);
-        setSessions(sorted);
-        await loadSessions(activeAgent, sorted.length ? sorted[0].id : null);
-      } catch { /* loadSessions gere deja l'erreur */ }
-    })();
+    loadSessions(activeAgent);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAgent]);
 
   // -------------------------------------------------------------------------
-  // Nettoyage du poll au demontage.
+  // Nettoyage du poll, flux SSE et timers au demontage.
   // -------------------------------------------------------------------------
-  useEffect(() => () => { stopPolling(); stopStreaming(); }, []);
+  useEffect(() => () => {
+    stopPolling();
+    stopStreaming();
+    clearAllTimeouts();
+  }, [clearAllTimeouts]);
 
   // -------------------------------------------------------------------------
   // Scroll auto NON INTRUSIF pendant le streaming.
@@ -645,7 +685,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
         // null), il a deja nettoye -> on ne fait rien. Sinon on nettoie ici.
         if (chatSseRef.current === es) {
           chatSseRef.current = null;
-          setTimeout(() => {
+          safeTimeout(() => {
             setBusyAgents((prev) => {
               if (!prev.has(agent)) return prev;
               const next = new Set(prev);
@@ -679,6 +719,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
     setCurrentSessionId(null);
     setSessions([]);
     setLiveStatus(null);
+    clearAllTimeouts();
     stopPolling();
     stopStreaming();
     setPendingUser(null);
@@ -877,7 +918,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
       // ci-dessus ne l'a pas encore vue, on recharge la liste de droite apres
       // un court delai pour qu'elle apparaisse SANS attendre le F5.
       if (!sessions.some((s: any) => s.id === sid)) {
-        setTimeout(() => { loadSessions(activeAgent, sid); }, 700);
+        safeTimeout(() => { loadSessions(activeAgent, sid); }, 700);
       }
       // Demarre le streaming instantane de la reponse agent (SSE chat).
       startStreaming(activeAgent, sid);
@@ -1072,7 +1113,10 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
 
       <div ref={containerRef} className="flex-1 flex min-h-0">
         {/* ============ COLONNE GAUCHE : AGENTS ============ */}
-        <div className="w-52 shrink-0 flex flex-col border-r border-stone-800 bg-stone-900/40 overflow-y-auto">
+        <div
+          style={{ width: `${agentsWidth}px` }}
+          className="relative shrink-0 flex flex-col border-r border-stone-800 bg-stone-900/40 overflow-y-auto"
+        >
           <div className="px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-stone-500 border-b border-stone-800 sticky top-0 bg-stone-900/90 backdrop-blur">
             Agents
           </div>
@@ -1103,6 +1147,15 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
               </button>
             );
           })}
+        </div>
+
+        {/* Poignée de redimensionnement pour la colonne Agents */}
+        <div
+          onMouseDown={startResizeAgents}
+          className="w-1.5 shrink-0 cursor-col-resize hover:bg-orange-500/50 active:bg-orange-500 transition-colors z-10 -ml-1 flex items-center justify-center group select-none"
+          title="Glisser pour redimensionner la colonne Agents"
+        >
+          <div className="w-0.5 h-6 bg-stone-700 group-hover:bg-orange-400 rounded" />
         </div>
 
         {/* ============ CENTRE : TERMINAL CLI ============ */}
@@ -1136,7 +1189,12 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
           <div className="shrink-0 px-3 py-2 border-b border-stone-800 bg-stone-900/40">
             <MessagesSearch
               agents={agents}
-              onFilter={setMsgFilter}
+              onFilter={(filter) => {
+                setMsgFilter(filter);
+                if (filter.agent && filter.agent !== activeAgent) {
+                  handleAgentClick(filter.agent);
+                }
+              }}
               onClear={() => setMsgFilter({ agent: '', keyword: '' })}
             />
           </div>
@@ -1164,7 +1222,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
 
                 {displayMessages.map((m, i) => {
                   const isUser = m.role === 'user';
-                  const isLastAgent = !isUser && i === displayMessages.length - 1 && !displayMessages.slice(i + 1).some((x: any) => x.role === 'agent');
+                  const isLastAgent = !isUser && !displayMessages.slice(i + 1).some((x: any) => x.role === 'agent');
                   const ts = m.ts
                     ? new Date(m.ts * 1000).toLocaleString('fr-FR', {
                         day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
@@ -1212,11 +1270,10 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                               <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
-                          {/* Statut de generation : TOUJOURS visible (pas seulement
-                              au survol) pour le dernier message agent en cours. */}
-                          {!isUser && (
+                          {/* Statut de generation : pastille visible UNIQUEMENT sur le dernier message agent */}
+                          {!isUser && isLastAgent && (
                             <div className="mt-0.5">
-                              <StatusDot running={liveRunning && isLastAgent} phase={liveStatus?.phase} />
+                              <StatusDot running={liveRunning} phase={liveStatus?.phase} />
                             </div>
                           )}
                         </div>
@@ -1239,8 +1296,6 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                     </div>
                   </div>
                 )}
-
-                <div ref={convEndRef} />
 
                 {userScrolledUp && liveRunning && (
                   <button
@@ -1340,8 +1395,20 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
           </div>
         </div>
 
+        {/* Poignée de redimensionnement pour la colonne Historique */}
+        <div
+          onMouseDown={startResizeHistory}
+          className="w-1.5 shrink-0 cursor-col-resize hover:bg-orange-500/50 active:bg-orange-500 transition-colors z-10 -mr-1 flex items-center justify-center group select-none"
+          title="Glisser pour redimensionner la colonne Historique"
+        >
+          <div className="w-0.5 h-6 bg-stone-700 group-hover:bg-orange-400 rounded" />
+        </div>
+
         {/* ============ COLONNE DROITE : HISTORIQUE ============ */}
-        <div className="w-60 shrink-0 flex flex-col border-l border-stone-800 bg-stone-900/40 overflow-y-auto">
+        <div
+          style={{ width: `${historyWidth}px` }}
+          className="relative shrink-0 flex flex-col border-l border-stone-800 bg-stone-900/40 overflow-y-auto"
+        >
           <div className="px-3 py-2 flex items-center justify-between border-b border-stone-800 sticky top-0 bg-stone-900/90 backdrop-blur">
             <span className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Historique</span>
             <div className="flex items-center gap-2">

@@ -190,7 +190,22 @@ async function fetchJson<T>(path: string, init?: RequestInit & { timeoutMs?: num
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} on ${path}`);
   }
-  return (await res.json()) as T;
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('text/html')) {
+    throw new Error(`Réponse HTML inattendue sur ${path} (route API non reconnue)`);
+  }
+  const text = await res.text();
+  if (!text || !text.trim()) {
+    return {} as T;
+  }
+  if (text.trim().startsWith('<')) {
+    throw new Error(`Réponse non-JSON reçue sur ${path} (HTML / document retourné)`);
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Format JSON invalide reçu sur ${path}`);
+  }
 }
 
 export async function getState(): Promise<ApiState> {

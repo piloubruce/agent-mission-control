@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   SlidersHorizontal, Sun, Moon, Save, RotateCcw,
   RefreshCw, CheckCircle2, AlertTriangle, Keyboard,
-  ChevronDown, ChevronUp, GripVertical,
+  GripVertical,
 } from 'lucide-react';
 import { TabId } from '../../types';
 import { useTheme } from '../../lib/theme';
@@ -843,7 +843,7 @@ useEffect(() => {
         {/* Colonne 3 — Configuration brute (rarement consultée) */}
         <details className={card}>
           <summary className="text-stone-400 text-sm cursor-pointer">Configuration brute (relecture après enregistrement)</summary>
-          <pre className="mt-3 text-xs font-mono text-stone-400 whitespace-pre-wrap break-all">{maskedCfg || '{}'}'</pre>
+          <pre className="mt-3 text-xs font-mono text-stone-400 whitespace-pre-wrap break-all">{maskedCfg || '{}'}</pre>
         </details>
 
       </div>

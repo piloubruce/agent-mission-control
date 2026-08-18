@@ -1,6 +1,6 @@
 import React from 'react';
-import { useApiState, deleteCron, updateCron, getCronExecutionLogs, runCron, getCronScript, type CronJob, type ExecutionLog } from '../../api';
-import { Clock, Plus, Edit, Trash2, RefreshCw, History, BarChart2, HelpCircle, Play } from 'lucide-react';
+import { useApiState, deleteCron, updateCron, runCron, getCronScript, type CronJob } from '../../api';
+import { Clock, Plus, Edit, Trash2, History, HelpCircle, Play } from 'lucide-react';
 import { CreateCronModal } from '../CreateCronModal';
 import { CreateCronAssistant } from '../cron/CreateCronAssistant';
 import { CronLogsDisplay } from '../cron/CronLogsDisplay';
