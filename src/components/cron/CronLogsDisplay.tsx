@@ -167,17 +167,17 @@ export const CronLogsDisplay: React.FC<CronLogsProps> = ({ jobId, maxLogs = 10 }
               <SourceBadge source={log.source} />
             </div>
             <div className="flex items-center gap-2">
+              <span className="text-gray-500 whitespace-nowrap">
+                {formatDuration(log.duration)} • {formatTimestamp(log.timestamp)}
+              </span>
               <button
                 onClick={(e) => { e.stopPropagation(); handleDeleteExecution(log.id); }}
                 disabled={deletingId === log.id}
-                className="text-stone-500 hover:text-red-400 disabled:opacity-50"
+                className="ml-auto text-stone-500 hover:text-red-400 disabled:opacity-50"
                 title="Supprimer cette exécution"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
-              <span className="text-gray-500 whitespace-nowrap">
-                {formatDuration(log.duration)} • {formatTimestamp(log.timestamp)}
-              </span>
             </div>
           </div>
           {cleanError(log.error, log.status) && (

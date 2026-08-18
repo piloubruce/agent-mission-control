@@ -1442,10 +1442,10 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                     </div>
                   </div>
                   {!selectMode && (
-                    <button
+                      <button
                       onClick={(e) => { e.stopPropagation(); deleteOne(s.id); }}
                       title="Supprimer cette session"
-                      className="shrink-0 text-stone-600 hover:text-red-400 transition-colors"
+                      className="ml-auto shrink-0 text-stone-600 hover:text-red-400 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
