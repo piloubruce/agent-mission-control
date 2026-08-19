@@ -25,6 +25,7 @@ import json
 import mimetypes
 import os
 import re
+import glob
 import shutil
 import secrets
 import signal
@@ -2635,41 +2636,165 @@ def read_fleet():
     })
 
 
+# Cache module-level des noms de cron (jobs.json) : id -> name.
+_CRON_NAMES_CACHE = {"mtime": 0.0, "names": {}}
+
+
+def _cron_names():
+    """Retourne {job_id: name} depuis ~/.hermes/cron/jobs.json (cache mtime)."""
+    import json as _json
+    p = os.path.join(HERMES_HOME, "cron", "jobs.json")
+    try:
+        mtime = os.path.getmtime(p)
+        if mtime != _CRON_NAMES_CACHE["mtime"]:
+            with open(p, "r", encoding="utf-8") as _fh:
+                data = _json.load(_fh)
+            names = {}
+            jobs = data.get("jobs", []) if isinstance(data, dict) else data
+            for j in jobs:
+                _id = j.get("id")
+                if _id:
+                    names[_id] = j.get("name") or _id
+            _CRON_NAMES_CACHE["mtime"] = mtime
+            _CRON_NAMES_CACHE["names"] = names
+    except Exception:
+        pass
+    return _CRON_NAMES_CACHE["names"]
+
+
 def read_agentlogs():
     def _go():
-        con = sqlite3.connect("file:%s?mode=ro" % AGENT_LOGS_DB, uri=True)
-        con.execute("PRAGMA query_only=1")
-        con.row_factory = sqlite3.Row
-        try:
-            rows = con.execute(
-                "SELECT agent_name, task_description, model_used, status, created_at "
-                "FROM agent_logs ORDER BY created_at DESC LIMIT 30"
-            ).fetchall()
-        finally:
-            con.close()
-
+        # Source de vérité : tâches/cron terminées AUJOURD'HUI.
+        # (La table agent_logs historique est vide -> on lit executions.db
+        #  + les sessions agent terminées du jour dans les state.db natifs.)
+        import tempfile as _tf
         logs = []
         completed = 0
         failed = 0
-        for r in rows:
-            a = (r["agent_name"] or "").lower()
-            meta = FLEET_META.get(a, {})
-            display = meta.get("feed_display", (r["agent_name"] or "?").upper())
-            st = r["status"]
-            if st == "completed":
-                completed += 1
-            elif st == "failed":
-                failed += 1
-            logs.append({
-                "agent": display,
-                "task": r["task_description"],
-                "time": r["created_at"],
-                "model": r["model_used"],
-                "status": st,
-            })
+
+        # Minuit aujourd'hui (epoch s)
+        _mid = datetime.datetime.combine(
+            datetime.date.today(), datetime.time.min
+        ).timestamp()
+
+        # --- (A) Cron / tâches planifiées (executions.db) ---
+        # Agrégé PAR job_id : un cron qui tourne toutes les 3 min ne doit pas
+        # inonder la liste. Une seule ligne par job avec le nb d'exécutions
+        # du jour + heure de la dernière. Le compte completed/failed reste le
+        # vrai total du jour.
+        try:
+            _tmp = _tf.NamedTemporaryFile(suffix=".db", delete=False).name
+            shutil.copyfile(mc_backend.CRON_EXEC_DB, _tmp)
+            con = sqlite3.connect(_tmp, timeout=5.0)
+            con.row_factory = sqlite3.Row
+            rows = con.execute(
+                "SELECT job_id, status, finished_at, error FROM executions "
+                "WHERE status IN ('completed','failed','error') "
+                "ORDER BY finished_at DESC"
+            ).fetchall()
+            con.close()
+            os.remove(_tmp)
+            # Aggregation par job_id
+            agg = {}  # job_id -> {count, completed, failed, last_ts, last_err}
+            for r in rows:
+                fa = r["finished_at"]
+                ts = 0.0
+                if fa:
+                    try:
+                        ts = datetime.datetime.fromisoformat(
+                            str(fa).replace("Z", "+00:00")
+                        ).timestamp()
+                    except Exception:
+                        ts = 0.0
+                if ts < _mid:
+                    continue  # hors jour courant
+                st = "completed" if r["status"] == "completed" else "failed"
+                if st == "completed":
+                    completed += 1
+                else:
+                    failed += 1
+                jid = r["job_id"] or "inconnu"
+                a = agg.setdefault(jid, {"count": 0, "completed": 0, "failed": 0,
+                                         "last_ts": 0.0, "last_err": None})
+                a["count"] += 1
+                if st == "completed":
+                    a["completed"] += 1
+                else:
+                    a["failed"] += 1
+                if ts > a["last_ts"]:
+                    a["last_ts"] = ts
+                    a["last_err"] = r["error"] if st != "completed" else None
+            for jid, a in agg.items():
+                _names = _cron_names()
+                _label = _names.get(jid, jid) or "inconnu"
+                _err = ((" — " + (a["last_err"] or "")) if a["failed"] and a["last_err"] else "")
+                _detail = "%d exécution(s) aujourd'hui" % a["count"]
+                if a["failed"]:
+                    _detail += " (%d en échec)" % a["failed"]
+                logs.append({
+                    "agent": "CRON",
+                    "task": "Tâche planifiée %s : %s%s" % (
+                        _label[:40], _detail, _err),
+                    "time": a["last_ts"],
+                    "model": None,
+                    "status": "completed" if a["failed"] == 0 else "failed",
+                })
+        except Exception:
+            pass
+
+        # --- (B) Sessions agent terminées aujourd'hui (state.db natifs) ---
+        try:
+            _roots = [os.path.join(HERMES_HOME, "state.db")]
+            _profs = glob.glob(os.path.join(HERMES_HOME, "profiles", "*", "state.db"))
+            for _db in [p for p in (_roots + _profs) if os.path.exists(p)]:
+                _tmp = None
+                try:
+                    _tmp = _tf.NamedTemporaryFile(suffix=".db", delete=False).name
+                    shutil.copyfile(_db, _tmp)
+                    con = sqlite3.connect(_tmp, timeout=5.0)
+                    con.row_factory = sqlite3.Row
+                    rows = con.execute(
+                        "SELECT id, title, last_activity_at, last_activity_description, profile "
+                        "FROM sessions ORDER BY last_activity_at DESC LIMIT 30"
+                    ).fetchall()
+                    con.close()
+                except Exception:
+                    continue
+                finally:
+                    if _tmp and os.path.exists(_tmp):
+                        try:
+                            os.remove(_tmp)
+                        except Exception:
+                            pass
+                for s in rows:
+                    la = s.get("last_activity_at") or 0
+                    if la < _mid:
+                        continue  # hors jour courant
+                    desc = (s.get("last_activity_description") or "").lower()
+                    if not any(k in desc for k in
+                                ("stream", "generate", "final", "complete", "responding", "tool completed")):
+                        continue  # pas une fin de génération
+                    prof = (s.get("profile") or "").lower()
+                    meta = FLEET_META.get(prof, {})
+                    display = meta.get("feed_display", (prof or "?").upper())
+                    completed += 1
+                    logs.append({
+                        "agent": display,
+                        "task": s.get("title") or s.get("id") or "(sans titre)",
+                        "time": la,
+                        "model": None,
+                        "status": "completed",
+                    })
+        except Exception:
+            pass
+
+        # Tri décroissant par heure, 30 derniers affichés.
+        logs.sort(key=lambda x: (x.get("time") or 0), reverse=True)
+        total_today = completed + failed
+        logs = logs[:30]
         return {
             "logs": logs,
-            "stats": {"total": len(logs), "completed": completed, "failed": failed},
+            "stats": {"total": total_today, "completed": completed, "failed": failed},
         }
     return safe(_go, {"logs": [], "stats": {"total": 0, "completed": 0, "failed": 0}})
 
@@ -6589,6 +6714,10 @@ def _sse_broadcast_loop():
             with _SSE_CLIENTS_LOCK:
                 clients = list(_SSE_CLIENTS)
             # Notifications NON encore diffusees (watermark sur ts).
+            try:
+                mc_backend._detect_event_notifications()
+            except Exception:
+                pass
             with mc_backend._NOTIFICATIONS_LOCK:
                 fresh = [n for n in mc_backend._NOTIFICATIONS
                          if n.get("ts", 0) > last_notif_ts]
@@ -7157,7 +7286,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not _is_fleet_agent(_a):
                     self._send_json({"error": "unknown agent"}, code=400)
                     return
-                _sessions = _read_agent_sessions(_a)
+                # 2026-08-19 (PILOUBRUCE) : l'historique MC = LA MEME session
+                # native Hermes Agent (state.db). On lit donc le store natif
+                # directement (_read_native_sessions) au lieu du vieux store
+                # MC sessions/<agent>.json (vide -> historique vide).
+                _sessions = _read_native_sessions(_a)
                 # newest first + attach the live (in-flight) status if any
                 _sessions.sort(key=lambda s: s.get("updated_at", 0), reverse=True)
                 # POINT 2a (2026-08-01, DEVELOPPEUR): expose provider/model on
@@ -8530,6 +8663,80 @@ def _messages_file(agent: str) -> str:
     return os.path.join(_MESSAGES_DIR, "%s.json" % agent)
 
 
+# ---------------------------------------------------------------------------
+# NATIVE HISTORY (2026-08-19) : l'historique MC = LA MEME session native
+# Hermes Agent (~/.hermes/state.db pour manager/default, ou
+# ~/.hermes/profiles/<profil>/state.db pour les autres). On lit ce store
+# DIRECTEMENT (helper _profile_state_db_path deja present) au lieu du vieux
+# store MC sessions/<agent>.json qui etait vide -> historique vide dans l'onglet.
+# Cela garanti l'identite parfaite MC == Hermes Agent demandee par piloubruce.
+# ---------------------------------------------------------------------------
+def _read_native_sessions(agent: str):
+    """Lit toutes les sessions natives de l'agent depuis son state.db natif.
+
+    Repli sur l'ancien store MC (sessions/<agent>.json) si le state.db natif
+    est absent ou illisible. Renvoie une liste de dicts au format MC
+    (MessageSession). Sessions triees du plus recent au plus ancien.
+    """
+    db = _profile_state_db_path(agent)
+    if not os.path.exists(db):
+        return _read_agent_sessions(agent)
+    try:
+        con = sqlite3.connect("file:%s?mode=ro" % db, uri=True)
+        con.row_factory = sqlite3.Row
+        rows = con.execute(
+            "SELECT * FROM sessions ORDER BY last_activity_at DESC, "
+            "started_at DESC"
+        ).fetchall()
+        out = []
+        for srow in rows:
+            s = dict(srow)
+            sid = s.get("id")
+            mrows = con.execute(
+                "SELECT * FROM messages WHERE session_id=? AND active=1 "
+                "ORDER BY timestamp ASC",
+                (sid,),
+            ).fetchall()
+            msgs = []
+            for mr in mrows:
+                m = dict(mr)
+                role = (m.get("role") or "").lower()
+                # store natif: user / assistant / tool. MC attend user|agent.
+                if role == "user":
+                    disp = "user"
+                elif role in ("assistant", "agent"):
+                    disp = "agent"
+                else:
+                    # tool / system: on les masque de l'affichage MC
+                    continue
+                text = m.get("content") or m.get("text") or ""
+                msgs.append({
+                    "role": disp,
+                    "text": text,
+                    "ts": m.get("timestamp") or 0,
+                    "attachments": [],
+                })
+            created = (s.get("started_at") or 0)
+            updated = (s.get("last_activity_at") or s.get("ended_at")
+                       or created or 0)
+            out.append({
+                "id": sid,
+                "title": s.get("title") or "(sans titre)",
+                "created_at": created,
+                "updated_at": updated,
+                "message_count": len(msgs),
+                "messages": msgs,
+                "model": s.get("model") or "",
+                "provider": s.get("billing_provider") or "",
+                "source": s.get("source") or "",
+            })
+        con.close()
+        return out
+    except sqlite3.Error as exc:
+        _chat_log("native sessions read error agent=%s: %s" % (agent, exc))
+        return _read_agent_sessions(agent)
+
+
 def _read_agent_sessions(agent: str):
     """Return the list of sessions for `agent` (newest first). [] if none/file absent."""
     p = _messages_file(agent)
@@ -9079,15 +9286,31 @@ def _messages_send_bg(agent: str, sid: str, user_text: str, files: list,
 
 
 def _delete_agent_sessions(agent: str, ids):
-    """Delete the given session ids (or ALL if ids is None/'__all__'). Returns count removed."""
-    sessions = _read_agent_sessions(agent)
+    """Delete the given session ids (or ALL if ids is None/'__all__').
+
+    The sessions listed in the Messages tab are NATIVE Hermes sessions
+    (state.db), so deletion must go through `hermes sessions delete`, not the
+    legacy mc_messages/<agent>.json store (which is no longer the source of
+    truth and whose rewrite had no effect on the real history).
+    """
+    profile = _hermes_profile(agent)
+    hermes_bin = _resolve_hermes_bin()
     if ids and "__all__" not in ids:
-        want = set(ids)
-        kept = [s for s in sessions if s.get("id") not in want]
+        want = list(ids)
     else:
-        kept = []
-    removed = len(sessions) - len(kept)
-    _write_agent_sessions(agent, kept)
+        # ALL: read native ids and delete every one
+        want = [s.get("id") for s in _read_native_sessions(agent)
+                if s.get("id")]
+    removed = 0
+    for sid in want:
+        if not sid:
+            continue
+        try:
+            subprocess.run([hermes_bin, "sessions", "delete", "-p", profile, sid, "--yes"],
+                           capture_output=True, text=True, timeout=60)
+            removed += 1
+        except Exception as exc:
+            _chat_log("delete session failed agent=%s sid=%s: %s" % (agent, sid, exc))
     return removed
 
 

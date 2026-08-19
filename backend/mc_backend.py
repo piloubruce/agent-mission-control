@@ -750,6 +750,122 @@ def get_notifications(clear: bool = False, limit: int = 50):
 
 
 # ---------------------------------------------------------------------------
+# 5b) Détection automatique d'événements -> notifications (cloche fonctionnelle)
+# ---------------------------------------------------------------------------
+# Watermarks pour ne notifier chaque événement qu'UNE fois.
+_NOTIF_CRON_TS = [0.0]          # dernier finished_at (epoch s) déjà notifié
+_NOTIF_CRON_DONE = set()        # ids d'exécutions cron déjà notifiées
+_NOTIF_AGENT_DONE = set()       # session ids déjà notifiés "agent a fini"
+
+
+def _agent_state_dbs():
+    """Tous les state.db natifs (racine + chaque profil agent)."""
+    roots = [os.path.join(HOME, ".hermes", "state.db")]
+    profs = glob.glob(os.path.join(HOME, ".hermes", "profiles", "*", "state.db"))
+    return [p for p in (roots + profs) if os.path.exists(p)]
+
+
+def _detect_event_notifications():
+    """Pousse des notifications pour : (1) tâche/cron terminée, (2) agent ayant
+    fini de répondre. Appelé périodiquement par la boucle SSE. Idempotent
+    (watermarks)."""
+    # --- (1) Cron / tâche terminée ---
+    try:
+        if os.path.exists(CRON_EXEC_DB):
+            con = sqlite3.connect(CRON_EXEC_DB, timeout=5.0)
+            con.row_factory = sqlite3.Row
+            rows = con.execute(
+                "SELECT id, job_id, status, finished_at FROM executions "
+                "WHERE status IN ('completed','failed','error') "
+                "ORDER BY finished_at DESC LIMIT 50"
+            ).fetchall()
+            con.close()
+            last_ts = _NOTIF_CRON_TS[0]
+            new_last = last_ts
+            for r in rows:
+                fa = r["finished_at"]
+                # finished_at est un ISO string -> epoch
+                ts = 0.0
+                if fa:
+                    try:
+                        ts = datetime.datetime.fromisoformat(
+                            str(fa).replace("Z", "+00:00")
+                        ).timestamp()
+                    except Exception:
+                        ts = 0.0
+                if ts > new_last:
+                    new_last = ts
+                if ts > last_ts and r["id"] not in _NOTIF_AGENT_DONE:
+                    # nouvelle exécution terminée non encore notifiée
+                    st = r["status"]
+                    ntype = "success" if st == "completed" else "error"
+                    job = (r["job_id"] or "inconnu")[:24]
+                    add_notification(
+                        ntype,
+                        "Tâche planifiée terminée" if st == "completed"
+                        else "Tâche planifiée en échec",
+                        "Job %s : %s%s" % (
+                            job,
+                            st,
+                            ((" — " + (r["error"] or "")) if (st != "completed" and r["error"]) else ""),
+                        ),
+                        agent="cron",
+                    )
+                    _NOTIF_CRON_DONE.add(r["id"])
+            _NOTIF_CRON_TS[0] = new_last
+    except Exception as exc:  # noqa: BLE001
+        pass
+
+    # --- (2) Agent ayant fini de répondre (session terminée récemment) ---
+    try:
+        import tempfile as _tf
+        cutoff = time.time() - 25.0  # fenêtre de détection
+        _dbs = _agent_state_dbs()
+        for db in _dbs:
+            tmp = None
+            try:
+                # Copie locale pour éviter le verrou du gateway (écrit en
+                # continu dans state.db). Lecture directe = timeout/exception.
+                tmp = _tf.NamedTemporaryFile(suffix=".db", delete=False).name
+                shutil.copyfile(db, tmp)
+                con = sqlite3.connect(tmp, timeout=3.0)
+                con.row_factory = sqlite3.Row
+                rows = con.execute(
+                    "SELECT id, title, last_activity_at, last_activity_description "
+                    "FROM sessions ORDER BY last_activity_at DESC LIMIT 20"
+                ).fetchall()
+                con.close()
+            except Exception as _e:
+                continue
+            finally:
+                if tmp and os.path.exists(tmp):
+                    try:
+                        os.remove(tmp)
+                    except Exception:
+                        pass
+            for s in rows:
+                sid = s["id"]
+                la = s.get("last_activity_at") or 0
+                if la and la >= cutoff and sid not in _NOTIF_AGENT_DONE:
+                    desc = (s.get("last_activity_description") or "")
+                    title = s.get("title") or sid
+                    # Ne notifie que les sessions ayant effectivement fini de
+                    # générer (pas un simple "message reçu").
+                    if "stream" in desc.lower() or "generate" in desc.lower() \
+                            or "final" in desc.lower() or "complete" in desc.lower() \
+                            or "responding" in desc.lower():
+                        add_notification(
+                            "info",
+                            "Agent a fini de répondre",
+                            "\"%s\"" % title,
+                            agent="messages",
+                        )
+                        _NOTIF_AGENT_DONE.add(sid)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # 6) Scan model scoring
 # ---------------------------------------------------------------------------
 def calculate_model_score(latency_ms: float, ok: bool, error: str = None) -> dict:

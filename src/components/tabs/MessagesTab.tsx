@@ -12,6 +12,10 @@ import {
   Check,
   Pencil,
   Search,
+  Calendar,
+  Terminal,
+  LayoutDashboard,
+  MessageSquare,
 } from 'lucide-react';
 import {
   getState,
@@ -246,6 +250,33 @@ const AgentMessageBody: React.FC<{ text: string }> = ({ text }) => {
 // Sentinelle pour "supprimer TOUTES les sessions d'un agent".
 const ALL = '__all__';
 
+// Petit logo de provenance d'une session (state.db natif : colonne `source`).
+// Mappe la valeur brute vers une icône + libellé + couleur.
+const SOURCE_META: Record<string, { icon: React.ComponentType<{ className?: string }>; label: string; color: string }> = {
+  cron:      { icon: Calendar,       label: 'Cron',       color: 'text-emerald-400' },
+  mc:        { icon: LayoutDashboard, label: 'Mission Control', color: 'text-orange-400' },
+  telegram:  { icon: Send,            label: 'Telegram',   color: 'text-sky-400' },
+  discord:   { icon: Send,            label: 'Discord',    color: 'text-indigo-400' },
+  tui:       { icon: Terminal,        label: 'CLI / TUI',  color: 'text-stone-300' },
+  cli:       { icon: Terminal,        label: 'CLI',        color: 'text-stone-300' },
+  web:       { icon: MessageSquare,   label: 'Web',        color: 'text-stone-300' },
+  api:       { icon: MessageSquare,   label: 'API',        color: 'text-stone-300' },
+};
+
+function SourceBadge({ source }: { source?: string }) {
+  const meta = source ? SOURCE_META[source.toLowerCase()] : undefined;
+  if (!meta) return null;
+  const Icon = meta.icon;
+  return (
+    <span
+      title={`Source : ${meta.label}`}
+      className={`inline-flex items-center justify-center shrink-0 ${meta.color}`}
+    >
+      <Icon className="w-3.5 h-3.5" />
+    </span>
+  );
+}
+
 const POLL_MS = 1500;
 
 export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent }) => {
@@ -293,6 +324,15 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  // --- Filtre par source d'origine (state.db : colonne `source`) ---
+  const [sourceFilter, setSourceFilter] = useState<string>(''); // '' = toutes
+  const filteredSessions = useMemo(
+    () => (sourceFilter
+      ? sessions.filter((s) => (s.source || '').toLowerCase() === sourceFilter)
+      : sessions),
+    [sessions, sourceFilter],
+  );
+
   // --- Saisie ---
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]); // chemins absolus
@@ -330,6 +370,11 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
     } catch { /* ignore */ }
     return 240;
   });
+
+  // --- Affichage/masquage du panneau Historique (toggle bouton + clic chat) ---
+  const [showHistory, setShowHistory] = useState<boolean>(true);
+  // Ref sur la zone de chat principale pour fermer l'historique au clic dedans.
+  const chatAreaRef = useRef<HTMLDivElement | null>(null);
 
   const isDraggingAgents = useRef(false);
   const isDraggingHistory = useRef(false);
@@ -526,6 +571,13 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
 
   // true = l'utilisateur a remonte et ne veut pas etre force vers le bas.
   const [userScrolledUp, setUserScrolledUp] = useState(false);
+  // Position de lecture : en haut (atTop) / en bas (atBottom). Sert a afficher
+  // les boutons de navigation verticale des qu'un ascenseur apparait, meme hors
+  // generation (PILU 2026-08-19 : avant, le seul bouton « ↓ bas » n'apparaissait
+  // QUE pendant une generation, donc dès qu'une discussion depassait la hauteur
+  // on ne pouvait plus remonter/descendre facilement).
+  const [atTop, setAtTop] = useState(true);
+  const [atBottom, setAtBottom] = useState(true);
 
   // Seuil (px) en-dessous duquel on considere qu'on est « en bas ».
   const BOTTOM_THRESHOLD = 40;
@@ -544,16 +596,26 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
     setUserScrolledUp(false);
   }, []);
 
+  // Force le scroll tout en haut (instantane).
+  const scrollToTop = useCallback(() => {
+    const el = convScrollRef.current;
+    if (!el) return;
+    el.scrollTop = 0;
+  }, []);
+
   // Detecte le scroll manuel de l'utilisateur : s'il remonte au-dela du
   // seuil, on leve le flag (auto-scroll desactive). S'il revient en bas, on
   // le raz (auto-scroll reactive). On ignore le scroll programme (flag interne)
-  // pour ne pas interferer avec le scroll auto.
+  // pour ne pas interferer avec le scroll auto. On met aussi a jour atTop/atBottom
+  // pour piloter l'affichage des boutons de navigation verticale.
   const isProgrammaticScroll = useRef(false);
   const onConversationScroll = useCallback(() => {
     if (isProgrammaticScroll.current) return;
     const el = convScrollRef.current;
     if (!el) return;
     setUserScrolledUp(distanceFromBottom(el) > BOTTOM_THRESHOLD);
+    setAtBottom(distanceFromBottom(el) <= BOTTOM_THRESHOLD);
+    setAtTop(el.scrollTop <= BOTTOM_THRESHOLD);
   }, []);
 
   // Effet de scroll auto : ne s'applique QUE si l'utilisateur est deja en bas
@@ -565,9 +627,14 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
   // changeait a chaque re-render. Désormais : on ne pousse le bas que si on y
   // etait deja, sinon on laisse la position intacte (aucun sautillement).
   useEffect(() => {
-    if (userScrolledUp) return; // lecture libre : pas d'auto-scroll
     const el = convScrollRef.current;
     if (!el) return;
+    // Recalcule atTop/atBottom a chaque changement de contenu (messages, live,
+    // session) pour que les boutons de navigation refletent la realite meme
+    // sans scroll utilisateur.
+    setAtBottom(distanceFromBottom(el) <= BOTTOM_THRESHOLD);
+    setAtTop(el.scrollTop <= BOTTOM_THRESHOLD);
+    if (userScrolledUp) return; // lecture libre : pas d'auto-scroll
     // Ne scrolle vers le bas que si on est deja en bas (tolerance seuil).
     // Sinon on ne touche pas scrollTop -> pas de deplacement vers le haut
     // qui provoquerait le sautillement.
@@ -1176,12 +1243,39 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
               [model: {activeModel}
               {activeProvider ? ` @ ${activeProvider}` : ''}]
             </span>
+          </div>
+
+          {/* Barre d'actions : nouvelle session + actualiser (ligne separee
+              pour ne pas couper les infos modele/timer/contexte sur tablette) */}
+          <div className="shrink-0 flex items-center justify-end gap-2 px-3 py-1.5 border-b border-stone-800 bg-stone-900/40">
             <button
               onClick={newSession}
-              className="ml-auto shrink-0 px-2 py-0.5 rounded border border-stone-700 text-stone-400 hover:text-orange-300 hover:border-orange-600 transition-colors"
+              className="shrink-0 px-2 py-0.5 rounded border border-stone-700 text-stone-400 hover:text-orange-300 hover:border-orange-600 transition-colors"
               title="Nouvelle session vierge"
             >
               + session
+            </button>
+            <button
+              onClick={() => {
+                if (activeAgent) loadSessions(activeAgent, currentSessionId);
+                // Remonte en bas apres le rechargement de la session.
+                setTimeout(scrollToBottom, 250);
+              }}
+              className="shrink-0 px-2 py-0.5 rounded border border-stone-700 text-stone-400 hover:text-orange-300 hover:border-orange-600 transition-colors"
+              title="Actualiser la conversation (recharge depuis Hermès / Telegram)"
+            >
+              {loadingSessions ? <Loader2 className="w-3 h-3 animate-spin" /> : '↻ actualiser'}
+            </button>
+            <button
+              onClick={() => setShowHistory((v) => !v)}
+              className={`shrink-0 px-2 py-0.5 rounded border transition-colors ${
+                showHistory
+                  ? 'border-orange-600 text-orange-300'
+                  : 'border-stone-700 text-stone-400 hover:text-orange-300 hover:border-orange-600'
+              }`}
+              title={showHistory ? 'Masquer l\'historique des sessions' : 'Afficher l\'historique des sessions'}
+            >
+              {showHistory ? '▣ historique' : '▢ historique'}
             </button>
           </div>
 
@@ -1203,6 +1297,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
           <div
             ref={convScrollRef}
             onScroll={onConversationScroll}
+            onClick={() => setShowHistory(false)}
             className="relative flex-1 overflow-y-auto px-4 py-3 font-mono text-sm leading-relaxed"
           >
             {!activeAgent ? (
@@ -1297,16 +1392,40 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                   </div>
                 )}
 
-                {userScrolledUp && liveRunning && (
-                  <button
-                    type="button"
-                    onClick={scrollToBottom}
-                    title="Aller en bas"
-                    className="sticky bottom-2 left-full ml-[-3rem] float-right mb-2 mr-3 flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-orange-600 text-white text-xs font-medium shadow-lg hover:bg-orange-500 transition-colors"
-                  >
-                    ↓ bas
-                  </button>
-                )}
+                {/* Boutons de navigation verticale : apparaissent des qu'un
+                    ascenseur est present (scrollHeight > clientHeight), meme hors
+                    generation. « ↓ bas » quand on n'est pas en bas, « ↑ haut »
+                    quand on n'est pas en haut. Pendant une generation le bouton
+                    « ↓ bas » reste prioritaire (auto-scroll). */}
+                {(() => {
+                  const el = convScrollRef.current;
+                  const hasScroll = el ? el.scrollHeight - el.clientHeight > BOTTOM_THRESHOLD : false;
+                  if (!hasScroll) return null;
+                  return (
+                    <div className="sticky bottom-2 flex justify-end gap-2 mr-3 mb-2 float-right">
+                      {!atTop && (
+                        <button
+                          type="button"
+                          onClick={scrollToTop}
+                          title="Aller en haut de la discussion"
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-stone-700 text-white text-xs font-medium shadow-lg hover:bg-stone-600 transition-colors"
+                        >
+                          ↑ haut
+                        </button>
+                      )}
+                      {!atBottom && (
+                        <button
+                          type="button"
+                          onClick={scrollToBottom}
+                          title="Aller en bas de la discussion"
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-orange-600 text-white text-xs font-medium shadow-lg hover:bg-orange-500 transition-colors"
+                        >
+                          ↓ bas
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
               </>
             )}
           </div>
@@ -1396,6 +1515,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
         </div>
 
         {/* Poignée de redimensionnement pour la colonne Historique */}
+        {showHistory && (
         <div
           onMouseDown={startResizeHistory}
           className="w-1.5 shrink-0 cursor-col-resize hover:bg-orange-500/50 active:bg-orange-500 transition-colors z-10 -mr-1 flex items-center justify-center group select-none"
@@ -1403,11 +1523,12 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
         >
           <div className="w-0.5 h-6 bg-stone-700 group-hover:bg-orange-400 rounded" />
         </div>
+        )}
 
         {/* ============ COLONNE DROITE : HISTORIQUE ============ */}
         <div
           style={{ width: `${historyWidth}px` }}
-          className="relative shrink-0 flex flex-col border-l border-stone-800 bg-stone-900/40 overflow-y-auto"
+          className={`relative shrink-0 flex flex-col border-l border-stone-800 bg-stone-900/40 overflow-y-auto ${showHistory ? '' : 'hidden'}`}
         >
           <div className="px-3 py-2 flex items-center justify-between border-b border-stone-800 sticky top-0 bg-stone-900/90 backdrop-blur">
             <span className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Historique</span>
@@ -1427,6 +1548,26 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                 {loadingSessions ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="text-xs">⟳</span>}
               </button>
             </div>
+          </div>
+
+          {/* Filtre par source d'origine */}
+          <div className="px-3 py-2 border-b border-stone-800 flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-widest text-stone-600 shrink-0">Source</span>
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="flex-1 bg-stone-950 border border-stone-800 rounded px-2 py-1 text-[11px] text-stone-300 font-mono focus:outline-none focus:border-orange-600"
+            >
+              <option value="">Toutes</option>
+              <option value="cron">Cron</option>
+              <option value="mc">Mission Control</option>
+              <option value="telegram">Telegram</option>
+              <option value="discord">Discord</option>
+              <option value="tui">CLI / TUI</option>
+              <option value="cli">CLI</option>
+              <option value="web">Web</option>
+              <option value="api">API</option>
+            </select>
           </div>
 
           {selectMode && (
@@ -1462,10 +1603,12 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
             {!activeAgent && (
               <div className="px-3 py-3 text-xs text-stone-600 font-mono">—</div>
             )}
-            {activeAgent && !loadingSessions && sessions.length === 0 && (
-              <div className="px-3 py-3 text-xs text-stone-600 font-mono">aucune session</div>
+            {activeAgent && !loadingSessions && filteredSessions.length === 0 && (
+              <div className="px-3 py-3 text-xs text-stone-600 font-mono">
+                {sessions.length === 0 ? 'aucune session' : 'aucune session pour ce filtre'}
+              </div>
             )}
-            {sessions.map((s) => {
+            {filteredSessions.map((s) => {
               const isOpen = s.id === currentSessionId;
               const isSel = selected.has(s.id);
               const d = new Date(s.created_at * 1000).toLocaleString('fr-FR', {
@@ -1501,6 +1644,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                   )}
                   <div className="flex-1 min-w-0 font-mono">
                     <div className={`text-[12px] truncate flex items-center gap-1.5 ${isOpen ? 'text-orange-200' : 'text-stone-300'}`}>
+                      <SourceBadge source={s.source} />
                       {s.title || s.id}
                       {s.live?.running && <Loader2 className="w-3 h-3 animate-spin text-orange-400 shrink-0" />}
                     </div>

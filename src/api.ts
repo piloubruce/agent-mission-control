@@ -1837,6 +1837,9 @@ export interface MessageSession {
   // le backend (/api/messages/sessions) pour affichage sous les bulles agent.
   provider?: string;
   model?: string;
+  // Source d'origine de la session (state.db natif): 'cron' | 'mc' | 'telegram'
+  // | 'tui' | 'discord' | 'web' | 'cli' | 'api' | ... ; vide si inconnu.
+  source?: string;
 }
 
 /** Response of GET /api/messages/sessions?agent=X */

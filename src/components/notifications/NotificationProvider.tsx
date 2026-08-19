@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Bell } from 'lucide-react';
-import { NotificationToast, type Notification as ToastNotification } from './NotificationToast';
+import { Bell, X } from 'lucide-react';
+import type { Notification as ToastNotification } from './NotificationToast';
 import { getNotifications, addNotification, type Notification as ApiNotification } from '../../api';
 import { subscribeSse } from '../../lib/sse';
 
@@ -113,13 +113,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     >
       {children}
 
-      {/* Notification Toast Container */}
-      <div className="fixed top-4 right-4 z-50 max-w-sm space-y-2">
-        {notifications.slice(0, 5).map((n) => (
-          <NotificationToast key={n.id} notification={n} onClose={() => clear(n.id)} />
-        ))}
-      </div>
-
       {/* Notification Bell Button */}
       <button
         onClick={() => setVisible(!visible)}
@@ -135,6 +128,68 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           )}
         </div>
       </button>
+
+      {/* Panneau de notifications (dropdown au-dessus de la cloche) */}
+      {visible && (
+        <div className="fixed bottom-20 right-4 z-40 w-80 max-h-[70vh] overflow-y-auto bg-stone-900 border border-stone-700 rounded-xl shadow-2xl">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-stone-800 sticky top-0 bg-stone-900">
+            <span className="text-sm font-medium text-stone-200">Notifications</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={clearAll}
+                className="text-xs text-stone-500 hover:text-orange-300 transition-colors"
+                title="Tout effacer"
+              >
+                Tout effacer
+              </button>
+              <button
+                onClick={() => setVisible(false)}
+                className="text-stone-500 hover:text-stone-300"
+                title="Fermer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          {notifications.length === 0 ? (
+            <div className="px-4 py-6 text-center text-xs text-stone-600 italic">
+              Aucune notification pour l'instant.
+            </div>
+          ) : (
+            <ul className="divide-y divide-stone-800">
+              {notifications.map((n) => (
+                <li
+                  key={n.id}
+                  className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-stone-800/50 transition-colors ${n.read ? '' : 'bg-stone-800/30'}`}
+                  onClick={() => markRead(n.id)}
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="flex-1 min-w-0">
+                      <span className={`font-medium ${n.read ? 'text-stone-400' : 'text-stone-200'}`}>
+                        {n.title}
+                      </span>
+                      {n.agent && (
+                        <span className="ml-1 text-xs text-stone-500">[{n.agent}]</span>
+                      )}
+                      <span className="block text-xs text-stone-400 mt-0.5 break-words">{n.message}</span>
+                      <span className="block text-xs text-stone-600 mt-1">
+                        {new Date(n.timestamp).toLocaleString('fr-FR')}
+                      </span>
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); clear(n.id); }}
+                      className="text-stone-500 hover:text-red-400 shrink-0"
+                      title="Supprimer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </NotificationContext.Provider>
   );
 };

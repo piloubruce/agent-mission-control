@@ -138,6 +138,7 @@ export const ConfigTab: React.FC = () => {
   const [scanProviders, setScanProviders] = useState<Record<string, boolean>>({});
   const [scanProvLoaded, setScanProvLoaded] = useState(false);
   const [scanProvError, setScanProvError] = useState<string | null>(null);
+  const [scanProvLoadError, setScanProvLoadError] = useState<string | null>(null);
   const [scanProvSaving, setScanProvSaving] = useState(false);
   const [scanProvSaved, setScanProvSaved] = useState(false);
   const [backupList, setBackupList] = useState<Array<{name: string; size: number; mtime: number}>>([]);
@@ -239,7 +240,7 @@ const reload = async () => {
         }
       } catch (e) {
         if (!cancelled) {
-          setScanProvError(e instanceof Error ? e.message : String(e));
+          setScanProvLoadError(e instanceof Error ? e.message : String(e));
           setScanProvLoaded(true);
         }
       }
@@ -417,19 +418,6 @@ useEffect(() => {
           <RefreshCw className={`w-4 h-4 ${busy ? 'animate-spin' : ''}`} /> Recharger
         </button>
       </div>
-
-      {msg && (
-        <div className={`flex items-start gap-2 text-sm rounded-xl px-4 py-3 border ${
-          msg.kind === 'ok'
-            ? 'text-emerald-400 border-emerald-900/50 bg-emerald-950/20'
-            : 'text-amber-400 border-amber-900/50 bg-amber-950/20'
-        }`}>
-          {msg.kind === 'ok'
-            ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
-            : <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />}
-          <span>{msg.text}</span>
-        </div>
-      )}
 
       {/* --- Thème ------------------------------------------------------ */}
       <div className={card}>
@@ -702,6 +690,11 @@ useEffect(() => {
               <AlertTriangle className="w-4 h-4" /> Erreur de sauvegarde : {scanProvError}
             </span>
           )}
+          {!scanProvError && scanProvLoadError && (
+            <span className="text-red-400 flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4" /> Erreur de chargement des providers : {scanProvLoadError}
+            </span>
+          )}
           {!scanProvSaving && !scanProvSaved && !scanProvError && (
             <span className="text-xs text-stone-600">Sauvegarde immédiate à chaque modification.</span>
           )}
@@ -713,6 +706,18 @@ useEffect(() => {
 
 
       {/* --- Bas : Sauvegarde | Enregistrer | Config brute (3 colonnes) --- */}
+      {msg && (
+        <div className={`flex items-start gap-2 text-sm rounded-xl px-4 py-3 border mb-6 ${
+          msg.kind === 'ok'
+            ? 'text-emerald-400 border-emerald-900/50 bg-emerald-950/20'
+            : 'text-amber-400 border-amber-900/50 bg-amber-950/20'
+        }`}>
+          {msg.kind === 'ok'
+            ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+            : <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />}
+          <span>{msg.text}</span>
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
         {/* Colonne 1 — Sauvegarde / Restauration */}
@@ -735,10 +740,11 @@ useEffect(() => {
                     setBusy(false);
                   }
                 }}
-                disabled={busy}
+                disabled={busy || !scanProvLoaded}
+                title={scanProvLoaded ? 'Créer un backup maintenant' : 'Chargement des providers en cours…'}
                 className={`${btn} bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-2 disabled:opacity-50`}
               >
-                Créer un backup maintenant
+                {scanProvLoaded ? 'Créer un backup maintenant' : 'Chargement…'}
               </button>
               {busy && <RefreshCw className="w-4 h-4 animate-spin" />}
             </div>
@@ -781,7 +787,7 @@ useEffect(() => {
                         <span className="text-xs text-stone-400">{(backup.size / 1024 / 1024).toFixed(1)} Mo</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col gap-2">
                       <a
                         href={downloadBackupUrl(backup.name)}
                         target="_blank"

@@ -19,6 +19,7 @@ const WIDGET_IDS = ['fleet', 'metrics', 'production', 'logs'];
 export const OverviewTab: React.FC = () => {
   const { state, connected } = useApiState();
   const [showLogs, setShowLogs] = useState(false);
+  const [showTasks, setShowTasks] = useState(false);
   const dnd = useDndOrder(WIDGETS_KEY, WIDGET_IDS);
 
   const fleet = state?.fleet ?? [];
@@ -153,7 +154,7 @@ export const OverviewTab: React.FC = () => {
             <span className="text-sm font-medium">Dernier démarrage Hermes MC</span>
             <span className="text-sm font-bold">{mcStartStr}</span>
           </div>
-          <div className="bg-orange-700/50 rounded-xl p-4 flex items-center justify-between">
+          <div className="bg-orange-700/50 rounded-xl p-4 flex items-center justify-between cursor-pointer hover:bg-orange-600/60 transition-colors" onClick={() => setShowTasks(true)} title="Voir le détail des tâches terminées">
             <span className="text-sm font-medium">Tâches terminées</span>
             <span className="text-xl font-bold">{tasksDone.toLocaleString('fr-FR')}</span>
           </div>
@@ -226,6 +227,44 @@ export const OverviewTab: React.FC = () => {
           );
         })}
       </div>
+
+      {showTasks && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setShowTasks(false)}
+        >
+          <div
+            className="bg-stone-950 border border-stone-800 rounded-3xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b border-stone-800">
+              <h3 className="text-stone-200 font-medium flex items-center">
+                <Activity className="w-4 h-4 mr-2 text-orange-500" /> Tâches terminées aujourd'hui
+                <span className="ml-2 text-xs text-stone-500">({tasksDone} au total{tasksDone !== logs.length ? `, ${logs.length} lignes affichées` : ''})</span>
+              </h3>
+              <button
+                onClick={() => setShowTasks(false)}
+                className="p-1.5 text-stone-500 hover:text-stone-200 rounded-lg hover:bg-stone-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-5 space-y-2 font-mono text-xs">
+              {logs.length === 0 && (
+                <div className="text-stone-600">Aucune tâche terminée pour le moment.</div>
+              )}
+              {logs.map((log, i) => (
+                <div key={i} className="flex items-start text-stone-400">
+                  <span className="text-stone-600 w-24 shrink-0">{log.time ? formatAny(log.time) : '—'}</span>
+                  <span className={`${log.status === 'completed' ? 'text-cyan-400' : 'text-red-400'}`}>
+                    [{log.agent}] {log.task ?? '(sans description)'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showLogs && (
         <div
