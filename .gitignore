@@ -6,3 +6,30 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Runtime databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Backups / runtime data dirs
+backups/
+uploads/
+data/
+.tmp_rech/
+.tmp/
+
+# Generated artifacts
+*.pdf
+*.tar.gz
+
+# Editor / temp backups
+*.bak-*
+*.bak
+*~

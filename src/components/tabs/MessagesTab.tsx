@@ -30,8 +30,12 @@ import {
   subscribeChatStream,
   MessageSession,
   MessageStatus,
+  MessageItem,
   FleetAgent,
+  getModelSpecs,
+  getAgentModel,
 } from '../../api';
+import { HERMES_INTERNAL_MODEL_REGISTRY } from '../../api';
 import { agentStatusFromStrings, agentStatusClasses } from '../../types';
 import { MessagesSearch, type MessageFilter } from '../messages/MessagesSearch';
 
@@ -279,6 +283,19 @@ function SourceBadge({ source }: { source?: string }) {
 
 const POLL_MS = 1500;
 
+// FIX (2026-08-21) : matching tolerent entre la bulle optimiste (pendingUser)
+// et l'historique recharge. L'egalite stricte === cassait sur les espaces de
+// debut/fin, le markdown ou les pieces jointes ('(piece jointe)'), ce qui
+// laissait la question absente OU dupliquee. On normalise (espaces/trim) et on
+// accepte aussi un prefixe commun (le serveur peut tronquer/normaliser).
+const _normMsg = (s?: string) => (s || '').replace(/\s+/g, ' ').trim();
+const textMatches = (a?: string, b?: string): boolean => {
+  const na = _normMsg(a);
+  const nb = _normMsg(b);
+  if (!na || !nb) return false;
+  return na === nb || na.startsWith(nb.slice(0, 24)) || nb.startsWith(na.slice(0, 24));
+};
+
 export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent }) => {
   // --- Catalogue d'agents (lu depuis /api/state -> fleet, noms COMPLETS) ---
   const [agents, setAgents] = useState<FleetAgent[]>([]);
@@ -343,6 +360,27 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
   const [cancelling, setCancelling] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+
+  // --- Indicateurs d'en-tete (temps de reflexion, duree session, jauge
+  //     contexte). Calcules COTE FRONT a partir de donnees deja disponibles :
+  //       * reflexion : ts du 1er token stream - ts d'envoi (latence avant
+  //         la 1ere reponse).
+  //       * duree session : messages[0].ts - created_at (duree enregistree
+  //         de la session native Hermes).
+  //       * contexte : somme tokens estimes (chars/4) de la session /
+  //         context_length du modele (HERMES_INTERNAL_MODEL_REGISTRY).
+  //     Le backend /api/messages/status ne renvoyant que
+  //     {running,text,error,phase}, ces indicateurs sont recalcules ici
+  //     (l'endpoint /api/messages/context ayant ete retire lors d'une refonte).
+  const sentAtRef = useRef<number | null>(null);   // ts envoi (ms)
+  const firstTokenAtRef = useRef<number | null>(null); // ts 1er token (ms)
+  const [reflectionMs, setReflectionMs] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState<number>(Date.now());
+  // Ticker 1s pour rafraichir la duree live pendant la generation.
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // --- Recherche/filtre global dans la conversation (MESSAGES) ---
   // Filtre par mot-cle (keyword) + plage de dates sur les messages affiches.
@@ -463,8 +501,19 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
   // Flux SSE chat (token-par-token, audit 2026-08-07) : remplace le poll 1.5s
   // quand EventSource est dispo. Un seul flux actif a la fois.
   const chatSseRef = useRef<EventSource | null>(null);
+  // FIX (2026-08-21): le worker est indexé par le mc_sid (msg_…) renvoyé par
+  // /api/messages/send, alors que currentSessionId vaut l'id natif après l'
+  // unification d'ids. On garde le mc_sid du dernier send pour le cancel.
+  const sentSidRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // FIX (2026-08-22): garde la derniere liste triee de sessions (retour de
+  // getMessageSessions) accessible en dehors du render. handleSend doit ouvrir
+  // EXACTEMENT la session creee par ce send (celle contenant le user turn),
+  // PAS sorted[0] (qui peut etre une autre session plus recente par created_at
+  // ou a cause d'une race sur l'ecriture state.db). La closure `sessions` peut
+  // etre stale apres loadSessions -> on lit ici la liste fraiche.
+  const lastSortedRef = useRef<MessageSession[]>([]);
 
   // -------------------------------------------------------------------------
   // Charge la liste d'agents depuis le backend (dynamique, jamais en dur).
@@ -495,23 +544,32 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
   // cours (anti-coupure : le subprocess tourne cote serveur meme si on a
   // change d'onglet/agent entre-temps).
   // -------------------------------------------------------------------------
-  const loadSessions = async (agent: string, openId?: string | null) => {
+  const loadSessions = async (agent: string, openId?: string | null, resume: boolean = true) => {
     setLoadingSessions(true);
     try {
       const data = await getMessageSessions(agent);
       const list = data.sessions || [];
-      // Trie par date decroissante (created_at, fallback timestamp dans l'id).
+      // Trie par date decroissante (updated_at = date du dernier message, fallback created_at).
+      // FIX (2026-08-22) : on veut que sorted[0] soit la session ouverte (celle du dernier
+      // echange), peu importe quand elle a ete creee (cas: rajout de message dans une
+      // vieille session). L'API renvoie deja updated_at via _read_native_sessions
+      // (server.py L8923-8925: updated = last_activity_at or ended_at or created).
       const _ts = (s: MessageSession) => {
+        // Tri par date du DERNIER MESSAGE (updated_at), pas created_at
+        if (typeof (s as any).updated_at === 'number') return (s as any).updated_at;
         if (typeof s.created_at === 'number') return s.created_at;
         const m = /^msg_(\d+)/.exec(s.id || '');
         return m ? parseInt(m[1], 10) : 0;
       };
       const sorted = [...list].sort((a, b) => _ts(b) - _ts(a));
       setSessions(sorted);
+      // FIX (2026-08-22): expositions la liste fraiche pour handleSend (evite
+      // la closure stale de `sessions`).
+      lastSortedRef.current = sorted;
       // Ouvre une session precise si demandee, sinon garde la courante si presente,
       // sinon la plus recente (sorted[0]).
       const target = openId !== undefined
-        ? openId
+        ? (sorted.some((s) => s.id === openId) ? openId : null)  // openId fourni mais inconnu -> NE PAS ouvrir sorted[0]
         : (currentSessionId && sorted.some((s) => s.id === currentSessionId)
             ? currentSessionId
             : (sorted.length ? sorted[0].id : null));
@@ -519,7 +577,11 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
       // Reprend le streaming si la session ouverte est encore en cours.
       if (target) {
         const sess = sorted.find((s) => s.id === target);
-        if (sess?.live?.running) startStreaming(agent, target);
+        // ANTI-BOUCLE (2026-08-21): ne (re)demarre le stream SSE que si aucun
+        // n'est deja actif ET si l'appelant l'autorise (resume). Sinon
+        // onDone -> loadSessions -> startStreaming -> onDone... en boucle
+        // quand le backend laisse running=true colle (BUG C scintillement).
+        if (resume && sess?.live?.running && !chatSseRef.current) startStreaming(agent, target);
         return sess;
       }
       return null;
@@ -620,12 +682,9 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
 
   // Effet de scroll auto : ne s'applique QUE si l'utilisateur est deja en bas
   // (userScrolledUp = false). Quand il a remonte, on ne fait rien (il garde
-  // sa position de lecture). On ne force le scroll QUE si on est deja en bas
-  // (distance <= seuil) : ca empeche l'oscillation « remonte/redescend » qui
-  // survenait quand ce hook se declenchait a chaque setSessions/setLiveStatus
-  // (poll SSE 1.5s + rechargement SSE chat) sur un conteneur dont la hauteur
-  // changeait a chaque re-render. Désormais : on ne pousse le bas que si on y
-  // etait deja, sinon on laisse la position intacte (aucun sautillement).
+  // sa position de lecture). Pendant le streaming live, on suit le bas SANS
+  // condition de distance : le conteneur grossit vite (tokens), un seuil de
+  // 40px couperait le suivi et l'utilisateur devrait scroller a la main.
   useEffect(() => {
     const el = convScrollRef.current;
     if (!el) return;
@@ -635,20 +694,44 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
     setAtBottom(distanceFromBottom(el) <= BOTTOM_THRESHOLD);
     setAtTop(el.scrollTop <= BOTTOM_THRESHOLD);
     if (userScrolledUp) return; // lecture libre : pas d'auto-scroll
-    // Ne scrolle vers le bas que si on est deja en bas (tolerance seuil).
-    // Sinon on ne touche pas scrollTop -> pas de deplacement vers le haut
-    // qui provoquerait le sautillement.
+    const isLive = !!(liveStatus && liveStatus.running);
+    if (isLive) {
+      // Suivi agressif du bas pendant le stream (peu importe la distance).
+      isProgrammaticScroll.current = true;
+      el.scrollTop = el.scrollHeight;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          isProgrammaticScroll.current = false;
+        });
+      });
+      return;
+    }
+    // Hors stream : ne scrolle vers le bas que si on est deja en bas
+    // (tolerance seuil) -> empeche l'oscillation « remonte/redescend ».
     if (distanceFromBottom(el) > BOTTOM_THRESHOLD) return;
     isProgrammaticScroll.current = true;
     el.scrollTop = el.scrollHeight;
-    // On libere le flag apres le paint pour que le handler onScroll (qui
-    // survient suite a ce scroll programme) ne remonte pas userScrolledUp.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         isProgrammaticScroll.current = false;
       });
     });
   }, [sessions, liveStatus, currentSessionId, userScrolledUp]);
+
+  // FIX (2026-08-21) — defensif : effet dedie a la transition live -> done.
+  // Quand la generation passe de running:true a running:false, on force la vue
+  // en bas SANS condition de distance. Cela couvre le cas ou le contenu se
+  // reorganise en fin de reponse (disparition du bloc « raisonnement » ->
+  // hauteur reduite) et ou l'effet de scroll auto ci-dessus se retrouve calé
+  // trop haut sans se re-declencher. On respecte userScrolledUp (lecture libre).
+  const prevRunningRef = useRef(false);
+  useEffect(() => {
+    const isRunning = !!(liveStatus && liveStatus.running);
+    if (prevRunningRef.current && !isRunning && !userScrolledUp) {
+      setTimeout(scrollToBottom, 300);
+    }
+    prevRunningRef.current = isRunning;
+  }, [liveStatus, userScrolledUp, scrollToBottom]);
 
   // -------------------------------------------------------------------------
   // Polling du statut en temps reel (streaming). Idempotent : nettoie tout
@@ -710,6 +793,11 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
     setLiveStatus({ agent, session_id: sessionId, running: true, text: '', error: null });
     const es = subscribeChatStream(agent, sessionId, {
       onToken: (chunk) => {
+        // Capture du 1er token -> temps de reflexion (latence avant 1ere reponse).
+        if (firstTokenAtRef.current === null && sentAtRef.current !== null && chunk) {
+          firstTokenAtRef.current = Date.now();
+          setReflectionMs(firstTokenAtRef.current - sentAtRef.current);
+        }
         setLiveStatus((prev) => {
           const base =
             prev && prev.session_id === sessionId
@@ -736,12 +824,18 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
           return next;
         });
         if (err) setError(err);
-        loadSessions(agent, sessionId).then(() => {
+        loadSessions(agent, undefined, false).then(() => {
           // Historique a jour : le message final y est. On retire le live pour
           // eviter tout doublon visuel (le rendu fusionne deja pendant running).
           setLiveStatus((prev) =>
             prev && prev.session_id === sessionId ? null : prev,
           );
+          // FIX (2026-08-21) : la reponse finale vient d'arriver et le bloc
+          // « raisonnement » a disparu -> la hauteur du conteneur a DIMINUE.
+          // On force la vue en bas APRES ce render pour que la fin de reponse
+          // soit visible sans avoir a cliquer « bas ». Le delai laisse le DOM
+          // se stabiliser (comme le fait deja le bouton actualiser en 250ms).
+          setTimeout(scrollToBottom, 300);
         });
       },
       onError: () => {
@@ -957,6 +1051,10 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
     if ((!text && attachments.length === 0) || !activeAgent || sending) return;
     setSending(true);
     setError(null);
+    // Reset des indicateurs de timing pour ce nouveau tour.
+    sentAtRef.current = Date.now();
+    firstTokenAtRef.current = null;
+    setReflectionMs(null);
     // Affichage immediat (optimiste) de la question + agent passe en "busy".
     const userMsgDisplay = text || (attachments.length ? '(piece jointe)' : '');
     setPendingUser(userMsgDisplay);
@@ -964,31 +1062,51 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
     try {
       const res = await sendMessage(activeAgent, currentSessionId, text, attachments);
       const sid = res.session_id;
+      // FIX (2026-08-21): mémorise le mc_sid réel pour le cancel (voir sentSidRef).
+      sentSidRef.current = sid;
       setInput('');
       setAttachments([]);
       setCurrentSessionId(sid);
-      // Recharge pour afficher le message user + la session dans la liste.
-      const reloadedSession = await loadSessions(activeAgent, sid);
-      // Le serveur persiste le message user immediatement (cf. _persist_user_msg),
-      // donc l'historique recharge (messages[]) contient DEJA la vraie bulle user.
-      // Verification: le user turn est-il bien present dans les messages recharges?
-      const hasUserMsg = reloadedSession?.messages?.some(
-        (m: any) => m.role === 'user' && m.text === userMsgDisplay
-      );
-      // On efface la bulle optimiste pendingUser SEULEMENT si le user turn
-      // est bien présent dans la session (evite le clignotement/disparition).
-      // Sans ca, la question apparaissait 2x tant que l'agent repondait, et ne
-      // "revenait" a 1 seule qu'au changement d'onglet (demontage/remontage).
-      if (hasUserMsg) setPendingUser(null);
-      // La session n'est ecrite dans sessions/<agent>.json qu'apres le spawn
-      // du worker (quelques dizaines de ms apres send). Si le loadSessions
-      // ci-dessus ne l'a pas encore vue, on recharge la liste de droite apres
-      // un court delai pour qu'elle apparaisse SANS attendre le F5.
-      if (!sessions.some((s: any) => s.id === sid)) {
-        safeTimeout(() => { loadSessions(activeAgent, sid); }, 700);
-      }
-      // Demarre le streaming instantane de la reponse agent (SSE chat).
+      // FIX (2026-08-22) RACINE : pour une NOUVELLE session, resolve-native renvoie
+      // null (le mapping n'est jamais peuple). On NE doit PAS dependre de cet
+      // endpoint. Au lieu de cela, on poll l'API sessions par USER TURN :
+      // on cherche la session qui contient le message utilisateur qu'on vient
+      // d'envoyer (pendingUser). Le worker met parfois ~10-15s a ecrire le user
+      // turn dans state.db (modele lent). On poll max ~25s (50 x 500ms).
+      // pendingUser (bulle question) reste affichee pendant ce temps ->
+      // l'utilisateur voit sa question tout de suite.
       startStreaming(activeAgent, sid);
+      const openByUserTurn = async () => {
+        for (let i = 0; i < 50; i++) {
+          try {
+            await loadSessions(activeAgent, sid, false);
+            const found = (lastSortedRef.current || []).find(
+              (s: MessageSession) =>
+                Array.isArray((s as any).messages) &&
+                (s as any).messages.some(
+                  (m: any) => m.role === 'user' && textMatches(m.text, userMsgDisplay)
+                )
+            );
+            if (found && (found as any).id) {
+              setCurrentSessionId((found as any).id);
+              // vide la bulle optimiste si l'historique contient la question
+              setPendingUser(null);
+              return;
+            }
+          } catch { /* retry */ }
+          await new Promise((res) => setTimeout(res, 500));
+        }
+        // PAS de repli sorted[0]: ouvrir une session arbitraire (la plus
+        // active par updated_at) injecterait le 1er message d'UNE AUTRE
+        // session comme "residu" dans la nouvelle (cf. bug 2026-08-22: le
+        // repli ouvrait la session manager au lieu de la session de test).
+        // On garde currentSessionId tel quel; pendingUser (bulle question)
+        // reste affichee jusqu'a ce que le user turn soit trouve. Si le worker
+        // met trop de temps, l'utilisateur voit sa question (pendingUser) et
+        // la session s'ouvre des que l'API la contient.
+        return;
+      };
+      openByUserTurn();   // fire-and-forget (non-bloquant)
     } catch (e) {
       setPendingUser(null);
       setBusyAgents((prev) => {
@@ -1016,7 +1134,9 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
       await fetch('/api/messages/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent: activeAgent, session_id: currentSessionId }),
+        // FIX (2026-08-21): utilise le mc_sid réel du worker (sentSidRef), pas
+        // l'id natif de currentSessionId, sinon le backend ne trouve pas la clé.
+        body: JSON.stringify({ agent: activeAgent, session_id: sentSidRef.current || currentSessionId }),
       });
       // On ne force pas running=false ici : on laisse le polling constater la
       // fin (le backend met a jour le statut live + persiste la reponse
@@ -1126,22 +1246,45 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
   // final y est deja). Plus AUCUN doublon possible.
   const displayMessages = useMemo(() => {
     let base = openSessionObj?.messages || [];
-    if (pendingUser && !base.some((m: any) => m.role === 'user' && m.text === pendingUser)) {
+    // FIX (2026-08-22): anti-doublon robuste. On ajoute la bulle optimiste
+    // pendingUser UNIQUEMENT si l'historique ne contient PAS ENCORE de message
+    // user (cas: user turn pas encore persisté côté state.db au tout début).
+    // Dès qu'un user turn apparaît dans l'historique, on ne l'ajoute plus
+    // (evite le résidu/doublon même si textMatches rate sur le format).
+    if (pendingUser && !base.some((m: any) => m.role === 'user')) {
       base = [...base, { role: 'user', text: pendingUser, ts: Date.now() / 1000 }];
     }
     // Fusion live -> remplace le dernier message agent par le live (si running).
     if (liveStatus && liveStatus.running && liveStatus.text) {
       const copy = base.slice();
-      // Trouve le dernier index agent.
-      let lastAgent = -1;
-      for (let i = copy.length - 1; i >= 0; i--) {
-        if (copy[i].role === 'agent') { lastAgent = i; break; }
-      }
-      if (lastAgent >= 0) {
-        copy[lastAgent] = { ...copy[lastAgent], text: liveStatus.text };
+      // BUG 2026-08-20 : si le dernier message est pendingUser (question en
+      // cours pas encore persistee) et qu'un agent message existe plus haut
+      // (reponse d'un tour precedent), l'ancien code remplacait ce message
+      // agent existant -> on obtenait [.., agent(live), user(pending)] : la
+      // reponse s'affichait AU-DESSUS de la question. On insere donc le live
+      // juste APRES le dernier message user (pending ou persiste), jamais
+      // avant lui.
+      const lastUserIdx = (() => {
+        for (let i = copy.length - 1; i >= 0; i--) {
+          if (copy[i].role === 'user') return i;
+        }
+        return -1;
+      })();
+      const liveMsg: MessageItem = { role: 'agent', text: liveStatus.text, ts: Date.now() / 1000 };
+      if (lastUserIdx >= 0 && lastUserIdx === copy.length - 1) {
+        // Le user est deja en derniere position : on ajoute la reponse apres.
+        copy.push(liveMsg);
+      } else if (lastUserIdx >= 0) {
+        // User quelque part avant la fin : on insere la reponse juste apres.
+        copy.splice(lastUserIdx + 1, 0, liveMsg);
       } else {
-        // Pas encore de message agent persiste : on ajoute le live en fin.
-        copy.push({ role: 'agent', text: liveStatus.text, ts: Date.now() / 1000 });
+        // Aucun user : on remplace le dernier agent ou on ajoute.
+        let lastAgent = -1;
+        for (let i = copy.length - 1; i >= 0; i--) {
+          if (copy[i].role === 'agent') { lastAgent = i; break; }
+        }
+        if (lastAgent >= 0) copy[lastAgent] = liveMsg;
+        else copy.push(liveMsg);
       }
       base = copy;
     }
@@ -1170,6 +1313,89 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
     '(modele inconnu)';
   const activeProvider = openSessionObj?.provider || activeAgentObj?.modelProvider || '';
 
+  // Contexte max REEL du modele actif (resolu via getModelSpecs -> catalogue
+  // backend, repli registry interne Hermes). On evite le fallback arbitraire
+  // 128k : si le modele a une vraie valeur context_length, on l'affiche.
+  const [contextMaxTokens, setContextMaxTokens] = useState<number>(128000);
+  useEffect(() => {
+    let cancelled = false;
+    const resolve = async () => {
+      let modelToUse = activeModel;
+      let provToUse = activeProvider;
+      // Sur nouvelle session, activeModel peut etre '(modele inconnu)' (pas de
+      // session ouverte). On recupere le vrai modele de l'agent via getAgentModel.
+      if (!modelToUse || modelToUse === '(modele inconnu)') {
+        try {
+          const am = await getAgentModel(activeAgent);
+          if (am?.model) {
+            modelToUse = am.model;
+            if (am.provider) provToUse = am.provider;
+          }
+        } catch { /* ignore */ }
+      }
+      const mid = modelToUse.includes('/') ? modelToUse.split('/')[1] : modelToUse;
+      // 1) Registry interne Hermes (comme Hermes Agent natif -> 262144 pour hy3:free)
+      const reg = HERMES_INTERNAL_MODEL_REGISTRY[modelToUse] || HERMES_INTERNAL_MODEL_REGISTRY[mid];
+      if (reg?.context_length && reg.context_length > 0) {
+        if (!cancelled) setContextMaxTokens(reg.context_length);
+        return;
+      }
+      // 2) getModelSpecs (backend scan catalog) en repli
+      try {
+        const prov = provToUse || (modelToUse.includes('/') ? modelToUse.split('/')[0] : '');
+        if (prov && mid) {
+          const specs = await getModelSpecs(prov, mid);
+          if (specs?.context_length && specs.context_length > 0) {
+            if (!cancelled) setContextMaxTokens(specs.context_length);
+            return;
+          }
+        }
+      } catch { /* ignore */ }
+      // 3) dernier recours
+      if (!cancelled) setContextMaxTokens(128000);
+    };
+    resolve();
+    return () => { cancelled = true; };
+  }, [activeProvider, activeModel]);
+
+  // --- Indicateurs d'en-tete (calcule COTE FRONT, cf. refs plus haut) ---
+  // Duree de session : pour une session native Hermes, messages[0].ts
+  // (1er message user) - created_at (demarrage session) = duree enregistree
+  // complete. Pendant la generation live, on prolonge avec le tick horloge.
+  const sessionDurationMs = useMemo(() => {
+    if (!openSessionObj) return null;
+    const created = (openSessionObj.created_at || 0) * 1000;
+    const msgs = openSessionObj.messages || [];
+    if (msgs.length === 0) {
+      // Session vide : duree = maintenant - created (ou 0 si pas de created).
+      if (!created) return 0;
+      return liveRunning ? Math.max(0, nowTick - created) : 0;
+    }
+    const firstTs = (msgs[0].ts || 0) * 1000;
+    const endTs = (msgs[msgs.length - 1].ts || 0) * 1000;
+    const end = liveRunning ? Math.max(nowTick, endTs) : endTs;
+    if (!created) return Math.max(0, end - firstTs);
+    return Math.max(0, end - created);
+  }, [openSessionObj, liveRunning, nowTick]);
+
+  // Jauge contexte : somme des tokens estimes (chars/4, comme le backend) de
+  // tous les messages de la session / context_length du modele actif.
+  const { contextUsedPct, contextTokens } = useMemo(() => {
+    if (!openSessionObj) return { contextUsedPct: null, contextTokens: 0 };
+    let chars = 0;
+    for (const m of openSessionObj.messages || []) {
+      chars += String(m.text || '').length;
+    }
+    if (liveRunning && liveStatus?.text) chars += liveStatus.text.length;
+    const tokens = Math.ceil(chars / 4);
+    // Contexte max = contextMaxTokens (state resolu via getModelSpecs, repli
+    // registry interne Hermes, puis 128k en dernier recours). Pas de valeur
+    // arbitraire : on utilise la VRAIE context_length du modele quand dispo.
+    const max = contextMaxTokens || 128000;
+    const pct = Math.min(100, Math.round((tokens / max) * 100));
+    return { contextUsedPct: pct, contextTokens: tokens };
+  }, [openSessionObj, contextMaxTokens, liveRunning, liveStatus]);
+
   return (
     <div className="w-full h-[calc(100vh-7rem)] flex flex-col">
       {error && (
@@ -1178,7 +1404,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
         </div>
       )}
 
-      <div ref={containerRef} className="flex-1 flex min-h-0">
+      <div ref={containerRef} className="flex-1 flex items-stretch min-h-0">
         {/* ============ COLONNE GAUCHE : AGENTS ============ */}
         <div
           style={{ width: `${agentsWidth}px` }}
@@ -1227,21 +1453,67 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
 
         {/* ============ CENTRE : TERMINAL CLI ============ */}
         <div className="flex-1 min-w-0 flex flex-col bg-stone-950">
-          {/* En-tete terminal : agent + modele */}
-          <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-stone-800 bg-stone-900/70 font-mono text-xs">
-            <span className="flex gap-1.5 mr-1">
+          {/* En-tete terminal : agent + modele + indicateurs (temps reflexion,
+              duree session, jauge contexte). Les indicateurs sont calcules
+              cote front (cf. useMemo plus haut) car le backend
+              /api/messages/status ne les expose pas. */}
+          {/* FIX 2026-08-22 (Manager) : flex-nowrap + min-h fixe + overflow-hidden
+              pour que cet en-tete garde TOUJOURS 1 ligne de meme hauteur que
+              l'en-tete "Historique" de droite (sinon en flex-wrap il passait
+              en 2 lignes sur ecran etroit -> bandeaux desalignes). */}
+          <div className="shrink-0 flex flex-nowrap items-center gap-x-3 gap-y-1 px-3 py-2 border-b border-stone-800 bg-stone-900/70 font-mono text-xs min-h-[2.75rem] overflow-x-hidden whitespace-nowrap">
+            <span className="flex gap-1.5 mr-1 shrink-0">
               <span className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
               <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
               <span className="w-2.5 h-2.5 rounded-full bg-green-500/70" />
             </span>
-            <span className="text-green-400">agent@mc</span>
-            <span className="text-stone-600">:</span>
-            <span className="text-blue-400">~</span>
-            <span className="text-stone-600">$</span>
-            <span className="text-orange-400">{activeAgent || '—'}</span>
-            <span className="text-stone-500 truncate">
+            <span className="text-green-400 shrink-0">agent@mc</span>
+            <span className="text-stone-600 shrink-0">:</span>
+            <span className="text-blue-400 shrink-0">~</span>
+            <span className="text-stone-600 shrink-0">$</span>
+            <span className="text-orange-400 shrink-0">{activeAgent || '—'}</span>
+            <span className="text-stone-400 truncate min-w-0">
               [model: {activeModel}
               {activeProvider ? ` @ ${activeProvider}` : ''}]
+            </span>
+            <span className="text-stone-600">·</span>
+            {/* Temps de reflexion : latence avant le 1er token (ce tour). */}
+            <span title="Temps de réflexion (latence avant le 1er token)" className="flex items-center gap-1 text-stone-400">
+              <span className="text-stone-500">réflexion</span>
+              <span className={reflectionMs !== null ? 'text-amber-300' : 'text-stone-600'}>
+                {reflectionMs !== null ? `${(reflectionMs / 1000).toFixed(1)}s` : '—'}
+              </span>
+            </span>
+            <span className="text-stone-600">·</span>
+            {/* Duree de session : created_at -> dernier message (live = maintenant). */}
+            <span title="Durée de la session (création → dernière réponse)" className="flex items-center gap-1 text-stone-400">
+              <span className="text-stone-500">session</span>
+              <span className="text-cyan-300">
+                {sessionDurationMs !== null
+                  ? `${Math.floor(sessionDurationMs / 60000)}m${String(Math.floor((sessionDurationMs % 60000) / 1000)).padStart(2, '0')}s`
+                  : '—'}
+              </span>
+            </span>
+            <span className="text-stone-600">·</span>
+            {/* Jauge contexte : tokens estimes / contexte max du modele. */}
+            <span title="Contexte utilisé (estimation tokens ≈ caractères/4) / contexte max du modèle" className="flex items-center gap-1.5 text-stone-400">
+              <span className="text-stone-500">contexte</span>
+              {contextUsedPct !== null ? (
+                <>
+                  <span className="text-stone-300 tabular-nums">
+                    {(contextTokens / 1000).toFixed(1)}k / {((contextMaxTokens || 128000) / 1000).toFixed(1)}k
+                  </span>
+                  <span className="relative inline-block w-16 h-2 rounded-full bg-stone-700 align-middle overflow-hidden">
+                    <span
+                      className={`absolute left-0 top-0 h-full rounded-full ${contextUsedPct > 80 ? 'bg-red-500' : contextUsedPct > 50 ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                      style={{ width: `${contextUsedPct}%` }}
+                    />
+                  </span>
+                  <span className="text-stone-300">{contextUsedPct}%</span>
+                </>
+              ) : (
+                <span className="text-stone-600">—</span>
+              )}
             </span>
           </div>
 
@@ -1530,7 +1802,9 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
           style={{ width: `${historyWidth}px` }}
           className={`relative shrink-0 flex flex-col border-l border-stone-800 bg-stone-900/40 overflow-y-auto ${showHistory ? '' : 'hidden'}`}
         >
-          <div className="px-3 py-2 flex items-center justify-between border-b border-stone-800 sticky top-0 bg-stone-900/90 backdrop-blur">
+          {/* FIX 2026-08-22 (Manager) : min-h identique a l'en-tete terminal de
+              gauche pour que les 2 bandeaux soient TOUJOURS a la meme hauteur. */}
+          <div className="px-3 py-2 flex items-center justify-between border-b border-stone-800 sticky top-0 bg-stone-900/90 backdrop-blur min-h-[2.75rem]">
             <span className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Historique</span>
             <div className="flex items-center gap-2">
               <button

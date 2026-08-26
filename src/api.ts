@@ -480,6 +480,16 @@ export async function getModelCatalog(): Promise<ModelCatalog> {
   return cat;
 }
 
+// Force a full recompute of the MC model catalog (bypass in-process cache) so
+// newly-added providers (config.yaml `providers:` endpoints, fresh `hermes
+// setup` custom endpoints) show up without restarting the server.
+export async function refreshModelCatalog(): Promise<{ ok: boolean; providers?: number; models?: number; error?: string }> {
+  return fetchJson<{ ok: boolean; providers?: number; models?: number; error?: string }>(
+    '/api/models/refresh',
+    { method: 'POST' },
+  );
+}
+
 // Live fetch of ONE provider's model list (used when the user picks a
 // provider in the picker, so the list is always fresh for that provider).
 export async function getProviderModels(
@@ -843,6 +853,11 @@ interface HermesRegistryModelDef {
 }
 
 export const HERMES_INTERNAL_MODEL_REGISTRY: Record<string, HermesRegistryModelDef> = {
+  // --- Tencent hy3 (free) : context 262144 comme Hermès Agent natif ---
+  'hy3:free': { context_length: 262144, architecture: 'MoE / Tencent', modalities: 'Text', pricing: { prompt: 0, completion: 0, display: 'Gratuit' }, description: 'Tencent hy3 free (262k ctx)' },
+  'hy3-free': { context_length: 262144, architecture: 'MoE / Tencent', modalities: 'Text', pricing: { prompt: 0, completion: 0, display: 'Gratuit' }, description: 'Tencent hy3 free (262k ctx)' },
+  'tencent/hy3:free': { context_length: 262144, architecture: 'MoE / Tencent', modalities: 'Text', pricing: { prompt: 0, completion: 0, display: 'Gratuit' }, description: 'Tencent hy3 free via Nous/OmniRoute (262k ctx)' },
+  'tencent/hy3-free': { context_length: 262144, architecture: 'MoE / Tencent', modalities: 'Text', pricing: { prompt: 0, completion: 0, display: 'Gratuit' }, description: 'Tencent hy3 free via Nous/OmniRoute (262k ctx)' },
   // --- StepFun / Nous Portal Models ---
   'stepfun/step-3.7-flash:free': {
     context_length: 262144,
@@ -1268,6 +1283,58 @@ export function getHermesRegistryModel(provider: string, modelId: string): Model
         context_length: 2097152,
         architecture: 'Gemini 1.5',
         modalities: 'Text+Vision+Audio',
+      };
+    } else if (lowId.includes('nemotron-3-ultra')) {
+      // NVIDIA Nemotron 3 Ultra 550B (FreeLLMAPI / OpenRouter) — 1M ctx
+      match = {
+        context_length: 1000000,
+        architecture: 'NVIDIA Nemotron 3 Ultra (550B)',
+        modalities: 'Text',
+      };
+    } else if (lowId.includes('nemotron-3-super')) {
+      // NVIDIA Nemotron 3 Super 120B (OmniRoute / OpenRouter) — 128k ctx
+      // (Hermes affiche 128k dans le chat pour nvidia/nvidia/nemotron-3-super-120b-a12b)
+      match = {
+        context_length: 128000,
+        architecture: 'NVIDIA Nemotron 3 Super (120B)',
+        modalities: 'Text',
+      };
+    } else if (lowId.includes('nemotron-3.5')) {
+      // NVIDIA Nemotron 3.5 Lightning (FreeLLMAPI / OpenRouter) — 1M ctx
+      match = {
+        context_length: 1000000,
+        architecture: 'NVIDIA Nemotron 3.5 Lightning',
+        modalities: 'Text',
+      };
+    } else if (lowId.includes('poolside/laguna') || lowId.includes('laguna')) {
+      // Poolside Laguna (Nous Portal / OpenRouter) — 256k ctx
+      match = {
+        context_length: 262144,
+        architecture: 'Poolside Laguna',
+        modalities: 'Text',
+      };
+    } else if (lowId.includes('meituan/longcat') || lowId.includes('longcat')) {
+      // Meituan Longcat (Nous Portal) — 32k ctx
+      match = {
+        context_length: 32768,
+        architecture: 'Meituan Longcat',
+        modalities: 'Text',
+      };
+    } else if (lowId.includes('glm-4.5') || lowId.includes('glm4.5')) {
+      // Zhipu GLM 4.5 Flash (FreeLLMAPI) — 128k ctx
+      match = {
+        context_length: 128000,
+        architecture: 'Zhipu GLM 4.5',
+        modalities: 'Text+Vision',
+      };
+    } else if (lowId.includes('freellmapi') || lowId.includes('fusion') || lowId.includes('auto')) {
+      // FreeLLMAPI : agregateur de modeles (fusion / auto / nemotron-3-ultra-550b).
+      // Pas d'API de metadata publique -> on donne une estimation generique.
+      // 'fusion' et 'auto' sont des routeurs maison, pas des LLM nominatifs.
+      match = {
+        context_length: 128000,
+        architecture: 'FreeLLMAPI Router',
+        modalities: 'Text',
       };
     }
   }
@@ -1762,6 +1829,15 @@ export async function getScanStatus(scanId: string): Promise<ScanStatus> {
   );
 }
 
+// Authoritative list of scans still running on the backend. Used on tab
+// (re)mount so the UI can resume polling a scan that is still in flight even
+// if the frontend store / localStorage is inconsistent.
+export async function getActiveScans(): Promise<{ scans: Array<{ scan_id: string; provider: string; status: string; total: number; done: number }> }> {
+  return fetchJson<{ scans: Array<{ scan_id: string; provider: string; status: string; total: number; done: number }> }>(
+    '/api/scan/active',
+  );
+}
+
 /** Request cancellation of a running scan (Stop button). */
 export async function cancelScan(scanId: string): Promise<{ ok: boolean; status: string }> {
   return fetchJson<{ ok: boolean; status: string }>(
@@ -1853,6 +1929,28 @@ export interface SendMessageResult {
   ok: boolean;
   agent: string;
   session_id: string;
+}
+
+/** Response of POST /api/messages/resolve-native (FIX 2026-08-22).
+ *  Resout le mc_sid (msg_…) renvoye par /api/messages/send en l'id natif
+ *  (20260822_…) de la session creee par le worker. */
+export interface ResolveNativeResult {
+  agent: string;
+  mc_sid: string;
+  native_session_id: string | null;
+}
+
+/** FIX 2026-08-22 : resout le mc_sid en id natif de session pour ouvrir
+ *  EXACTEMENT la session creee (evite le residu = session du haut de liste). */
+export async function resolveNativeSession(
+  agent: string,
+  mcSid: string,
+): Promise<ResolveNativeResult> {
+  return fetchJson<ResolveNativeResult>('/api/messages/resolve-native', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agent, mc_sid: mcSid }),
+  });
 }
 
 /** Response of GET /api/messages/status?agent=X&session_id=Y */
@@ -2241,6 +2339,16 @@ export async function addNotification(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type, title, message, agent }),
+  });
+}
+
+export async function clearNotifications(
+  ids?: string[] | null
+): Promise<{ ok: boolean; remaining?: number }> {
+  return fetchJson<{ ok: boolean; remaining?: number }>('/api/notifications/clear', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: ids ?? null }),
   });
 }
 

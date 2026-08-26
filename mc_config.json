@@ -31,6 +31,7 @@
     "arcee": false,
     "azure-foundry": false,
     "bedrock": false,
+    "commandcode": false,
     "copilot": false,
     "copilot-acp": false,
     "deepinfra": false,
@@ -41,6 +42,7 @@
     "huggingface": false,
     "kilocode": false,
     "kimi-coding": false,
+    "meta-ai": false,
     "minimax": false,
     "nous": true,
     "novita": false,
@@ -58,7 +60,6 @@
     "zai": false,
     "lmstudio": true,
     "ollama local": true,
-    "omni-route": true,
     "freellmapi": true,
     "moa": false,
     "openai-api": false,
@@ -67,7 +68,9 @@
     "kimi-coding-cn": false,
     "minimax-oauth": false,
     "minimax-cn": false,
-    "opencode-go": false
+    "opencode-go": false,
+    "commandcode-anthropic": false,
+    "omni-route": true
   },
   "agents_order": [],
   "hotkey_order": [

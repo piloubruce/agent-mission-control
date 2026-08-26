@@ -723,30 +723,12 @@ def delete_cron_execution(execution_id: str) -> dict:
 
 # ---------------------------------------------------------------------------
 # 5) Notifications
+# (Les définitions UNIQUES de add_notification / get_notifications /
+#  clear_notifications se trouvent en section 5c plus bas, au format tuple
+#  (type, title, message, ts, agent). Cette ancienne double définition
+#  (dict + get_notifications(clear, limit)) a été supprimée pour éviter la
+#  confusion et le désaccord de format avec le reste du code.)
 # ---------------------------------------------------------------------------
-def add_notification(notif_type: str, title: str, message: str, agent: str = None):
-    """Add a notification to the queue."""
-    with _NOTIFICATIONS_LOCK:
-        _NOTIFICATIONS.append({
-            "type": notif_type,  # 'success', 'error', 'info', 'warning'
-            "title": title,
-            "message": message,
-            "ts": time.time(),
-            "agent": agent,
-        })
-        # Keep only last 100 notifications
-        if len(_NOTIFICATIONS) > 100:
-            _NOTIFICATIONS = _NOTIFICATIONS[-100:]
-    return {"ok": True}
-
-
-def get_notifications(clear: bool = False, limit: int = 50):
-    """Get recent notifications. If clear=True, also clear the queue."""
-    with _NOTIFICATIONS_LOCK:
-        notifs = list(_NOTIFICATIONS[-limit:])
-        if clear:
-            _NOTIFICATIONS = _NOTIFICATIONS[:-limit] if len(_NOTIFICATIONS) > limit else []
-    return {"ok": True, "notifications": notifs}
 
 
 # ---------------------------------------------------------------------------
@@ -795,7 +777,7 @@ def _detect_event_notifications():
                         ts = 0.0
                 if ts > new_last:
                     new_last = ts
-                if ts > last_ts and r["id"] not in _NOTIF_AGENT_DONE:
+                if ts > last_ts and r["id"] not in _NOTIF_CRON_DONE:
                     # nouvelle exécution terminée non encore notifiée
                     st = r["status"]
                     ntype = "success" if st == "completed" else "error"
@@ -838,11 +820,13 @@ def _detect_event_notifications():
             except Exception as _e:
                 continue
             finally:
-                if tmp and os.path.exists(tmp):
-                    try:
-                        os.remove(tmp)
-                    except Exception:
-                        pass
+                if tmp:
+                    for _s in ("", "-shm", "-wal"):
+                        try:
+                            if os.path.exists(tmp + _s):
+                                os.remove(tmp + _s)
+                        except Exception:
+                            pass
             for s in rows:
                 sid = s["id"]
                 la = s.get("last_activity_at") or 0
@@ -851,9 +835,15 @@ def _detect_event_notifications():
                     title = s.get("title") or sid
                     # Ne notifie que les sessions ayant effectivement fini de
                     # générer (pas un simple "message reçu").
-                    if "stream" in desc.lower() or "generate" in desc.lower() \
-                            or "final" in desc.lower() or "complete" in desc.lower() \
-                            or "responding" in desc.lower():
+                    desc_l = desc.lower()
+                    _is_streaming = (
+                        "stream" in desc_l or "generating" in desc_l
+                        or "responding" in desc_l or "receive" in desc_l
+                    )
+                    _is_done = (
+                        "complete" in desc_l or "final" in desc_l or "done" in desc_l
+                    )
+                    if _is_done and not _is_streaming:
                         add_notification(
                             "info",
                             "Agent a fini de répondre",
@@ -1162,6 +1152,48 @@ def get_notifications(clear: bool = False) -> dict:
         if clear:
             _NOTIFICATIONS = []
         return {"ok": True, "notifications": result}
+
+
+def clear_notifications(ids=None):
+    """Efface des notifications côté serveur.
+
+    ids=None  -> tout effacer.
+    sinon     -> retire les notifications dont l'id front correspond.
+
+    Les ids front sont de la forme ``notif-<ts>-<title>-<message>`` (voir
+    toToast dans NotificationProvider.tsx). _NOTIFICATIONS stocke des tuples
+    (type, title, message, ts, agent), on mappe donc via le critère
+    (ts, title, message).
+    """
+    global _NOTIFICATIONS
+    import re as _re
+
+    def _match(n):
+        # n est un tuple (type, title, message, ts, agent)
+        if not ids:
+            return False
+        ts = n[3]
+        title = n[1]
+        msg = n[2]
+        for i in ids:
+            # id front: notif-<ts>-<title>-<message>  (ts = float epoch SECONDES
+            # depuis epoch, ex. 1755771234.56). Le brief original utilisait
+            # r"notif-(\d+)-" mais \d+ s'arrete au point decimal -> le float ne
+            # match jamais. On accepte donc la partie decimale ([\d.]+).
+            # Le front tronque l'id a 80 chars (.slice(0,80)) : on tolera la
+            # troncature en exigeant title OU msg dans l'id (pas les deux).
+            # Le ts seul suffit a identifier la notif de facon unique.
+            m = _re.match(r"notif-([\d.]+)-", i or "")
+            if m and float(m.group(1)) == ts and (title in i or msg in i):
+                return True
+        return False
+
+    with _NOTIFICATIONS_LOCK:
+        if ids is None:
+            _NOTIFICATIONS = []
+        else:
+            _NOTIFICATIONS = [n for n in _NOTIFICATIONS if not _match(n)]
+    return {"ok": True, "remaining": len(_NOTIFICATIONS)}
 
 
 def add_notification(type: str, title: str, message: str, agent: str = None) -> dict:

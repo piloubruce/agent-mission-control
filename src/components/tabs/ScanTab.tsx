@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Scan, Play, Square, CheckSquare, CheckCircle2, XCircle, AlertTriangle, Loader2, TestTube, Ban, Trash2, FileDown, ChevronUp, ChevronDown } from 'lucide-react';
-import { getModelCatalog, startScan, getScanStatus, cancelScan, getBlacklist, toggleBlacklist, clearBlacklist, ModelCatalog, ScanStatus, ScanModelResult, testCapabilities, CapabilityResult, BlacklistMap, getScanResults, clearScanResults, calculateModelScore, isUnmeasured, type ModelScore, getModelSpecs, getHermesRegistryModel } from '../../api';
+import { getModelCatalog, startScan, getScanStatus, getActiveScans, cancelScan, getBlacklist, toggleBlacklist, clearBlacklist, ModelCatalog, ScanStatus, ScanModelResult, testCapabilities, CapabilityResult, BlacklistMap, getScanResults, clearScanResults, calculateModelScore, isUnmeasured, type ModelScore, getModelSpecs, getHermesRegistryModel } from '../../api';
 import { filterModels } from '../../lib/filterModels';
 
 const parseCapBoolean = (val: unknown): boolean | undefined => {
@@ -384,9 +384,13 @@ const loadScanSession = (): void => {
       if (saved.capsLastChecked) scanSession.capsLastChecked = saved.capsLastChecked;
       if (Array.isArray(saved.scanChecked)) scanSession.scanChecked = saved.scanChecked;
       if (Array.isArray(saved.testChecked)) scanSession.testChecked = saved.testChecked;
-      // vFIX (2026-08-14): force lastBatchKeys = [] pour eviter
-      // la persistance de compteurs incoherents (ex: 1202/115).
-      scanSession.lastBatchKeys = [];
+      // 2026-08-20 : on RESTAURE lastBatchKeys depuis localStorage (comme
+      // scanning/scanIds) au lieu de le forcer a []. Sinon, apres F5, le
+      // compteur de progression du scan en cours perdait son denominateur
+      // (756) et retombait sur merged.total qui pouvait cumuler d'anciens
+      // scans encore vivants cote serveur -> "49 sur 2259 / 3015". Le batch
+      // de 756 reste la reference du compteur "Ce scan".
+      if (Array.isArray(saved.lastBatchKeys)) scanSession.lastBatchKeys = saved.lastBatchKeys;
     }
   } catch {
     // JSON corrompu : on ignore et on garde les valeurs par defaut.
@@ -685,10 +689,15 @@ export const ScanTab: React.FC = () => {
 
           const hasTestedCaps = hasCapCheckDate || v !== undefined || re !== undefined || t !== undefined;
           if (hasTestedCaps) {
+            // NB: si un flag n'est pas explicite (undefined), on garde
+            // undefined (indetermine / a verifier) et NON false. Forcer false
+            // faisait afficher "TOUT KO" alors que le test avait donne OK mais
+            // que le backend avait expire le TTL 24h (capabilities remises a
+            // None). undefined != KO : l'UI affiche "a verifier", pas rouge.
             newCaps[key] = {
-              vision_supported: v !== undefined ? v : (hasCapCheckDate ? false : (undefined as unknown as boolean)),
-              reasoning_supported: re !== undefined ? re : (hasCapCheckDate ? false : (undefined as unknown as boolean)),
-              tools_supported: t !== undefined ? t : (hasCapCheckDate ? false : (undefined as unknown as boolean)),
+              vision_supported: v ?? (undefined as unknown as boolean),
+              reasoning_supported: re ?? (undefined as unknown as boolean),
+              tools_supported: t ?? (undefined as unknown as boolean),
               error: r.error ?? null,
             };
           }
@@ -805,20 +814,24 @@ export const ScanTab: React.FC = () => {
       // de sorte que le tableau reste affiche et se contente de se mettre a
       // jour au fil du scan.
       const hist = Object.values(scanSession.byKey);
-      setMerged(
-        hist.length
-          ? {
-              provider,
-              total: hist.length,
-              done: hist.length,
-              status: 'done',
-              configured: true,
-              error: null,
-              results: hist,
-              raw: {},
-            }
-          : null,
-      );
+      const mergedNext: MergedScan | null = hist.length
+        ? {
+            provider,
+            total: hist.length,
+            done: hist.length,
+            status: 'done',
+            configured: true,
+            error: null,
+            results: hist,
+            raw: {},
+          }
+        : null;
+      // FIX 2026-08-22 (Manager) : persiste le merged reconstruit au changement
+      // de provider (setStore ecrit aussi dans localStorage). Sans cela, un F5
+      // ulterieur perdait l'affichage des compteurs/tableau car setMerged seul
+      // ne serialisait pas l'etat dans le store module-level.
+      setStore({ merged: mergedNext });
+      setMerged(mergedNext);
     }
   }, [provider]);
 
@@ -835,8 +848,8 @@ export const ScanTab: React.FC = () => {
   // Restauration au montage : on restitue TOUT l'etat depuis le store module
   // (survit au demontage de l'onglet). Un scan FINI a scanning=false -> on doit
   // TOUT DE MEME restorer merged/caps/checked/provider pour ne pas afficher un
-  // ecran vide (BUG1). On ne reprend le poll QUE si le scan est encore vivant
-  // cote serveur (sinon on garde merged et on setScanning(false)).
+  // ecran vide (BUG1). On reprend le poll SEULEMENT si un scan est encore vivant
+  // cote serveur (source de verite), independamment du store/localStorage.
   useEffect(() => {
     if (scanSession.provider) setProvider(scanSession.provider);
     if (Array.isArray(scanSession.checked) && scanSession.checked.length) {
@@ -858,11 +871,49 @@ export const ScanTab: React.FC = () => {
     setSortKey(scanSession.sortKey ?? null);
     setSortDir(scanSession.sortDir ?? 'desc');
     setOnlyOk(scanSession.onlyOk ?? false);
-    // Reprendre le poll SEULEMENT si un scan etait en cours ET est toujours
-    // vivant cote serveur (sinon on garde merged et on setScanning(false)).
-    if (scanSession.scanning && scanSession.scanIds?.length) {
-      resumePollingIfAlive(scanSession.scanIds, scanSession.scanProv);
-    }
+    // Reprise ROBUSTE : la source de verite est le backend. On interroge
+    // /api/scan/active (scans encore running/cancelling cote serveur). Si au
+    // moins un scan est vivant, on reprend le poll + on affiche EN COURS +
+    // bouton Stop actif. Cela fonctionne meme si le store frontend ou
+    // localStorage est dans un etat incoherent (scan en cours mais
+    // scanning=false deplace). Sinon on garde merged affiche.
+    getActiveScans()
+      .then((res) => {
+        const live = (res?.scans || []).filter(
+          (s) => s && (s.status === 'running' || s.status === 'cancelling'),
+        );
+        // 2026-08-20 : on ne reprend QUE les scans dont le provider correspond
+        // au batch courant (derive de lastBatchKeys), pour ne PAS cumuler d'autres
+        // scans encore vivants cote serveur (ex: un ancien gros scan d'un autre
+        // provider) dans le compteur de progression. Sinon "X/756" devenait
+        // "X/2259/3015".
+        const batchProviders = new Set(
+          scanSession.lastBatchKeys.map((k) => k.split('::')[0]).filter(Boolean),
+        );
+        const liveBatch = batchProviders.size > 0
+          ? live.filter((s) => batchProviders.has(s.provider))
+          : live;
+        if (liveBatch.length > 0) {
+          const ids = liveBatch.map((s) => s.scan_id);
+          const prov: Record<string, string> = {};
+          for (const s of liveBatch) prov[s.scan_id] = s.provider;
+          scanIdsRef.current = ids;
+          scanProvRef.current = prov;
+          setStore({ scanIds: ids, scanProv: prov, scans: {}, scanning: true });
+          startPolling(ids, prov);
+        } else if (scanSession.scanning && scanSession.scanIds?.length) {
+          // Repli : pas de scan vivant cote serveur mais store disait en cours
+          // -> on synchronise l'affichage (pas de poll fantome).
+          setScanning(false);
+          setStore({ scanning: false, scanIds: [], scanProv: {} });
+        }
+      })
+      .catch(() => {
+        // Erreur reseau : on se rabat sur le store existant.
+        if (scanSession.scanning && scanSession.scanIds?.length) {
+          resumePollingIfAlive(scanSession.scanIds, scanSession.scanProv);
+        }
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1292,8 +1343,14 @@ export const ScanTab: React.FC = () => {
           }),
         );
         const alive = settled.filter((x) => x.status !== null) as Array<{ sid: string; status: ScanStatus; purged: boolean }>;
-        const allPurged = alive.length === 0 && settled.length > 0;
-        if (allPurged) {
+        // BUGFIX (2026-08-20): "allPurged" ne doit etre vrai QUE si TOUS les
+        // scan_id sont CONFIRMES purges (404/410). Une simple erreur reseau
+        // transitoire (status=null, purged=false) ne doit PAS arreter le poll
+        // ni faire revenir l'UI sur "Lancer le scan". Avant ce fix, un seul
+        // echec reseau -> alive=[] -> allPurged=true -> scan "fini" apres 1
+        // modele. On continue le poll tant qu'un scan n'est pas purge.
+        const allConfirmedPurged = settled.length > 0 && settled.every((x) => x.purged);
+        if (allConfirmedPurged) {
           // Tous les scan_id sont purgés côté serveur : on garde merged affiché
           // et on arrête le poll (pas d'écran vide, pas de poll fantôme).
           stopPolling();
@@ -1696,8 +1753,17 @@ export const ScanTab: React.FC = () => {
   // A) SCAN : modeles du scan en cours (handlePlay ou handleScanSelected)
   const scanCheckedCount = scanChecked.size;
   const scanBatchKeys = scanSession.lastBatchKeys;
-  const scanBatchTotal = scanBatchKeys.length > 0 ? scanBatchKeys.length : (merged?.total ?? 0);
-  const scanBatchDone = scanning ? Math.min(scanBatchTotal, merged?.done ?? 0) : (merged?.done ?? 0);
+  // BUGFIX (2026-08-20): le denominateur du compteur de progression est le
+  // batch lance (lastBatchKeys, ex: 756), RESTAURE depuis localStorage apres
+  // F5. Le "done" reflete le scan backend EN COURS (merged.done), pas
+  // l'historique fusionne depuis scan_results.db (qui ferait afficher
+  // "201/756" des le lancement si 201 modeles du batch etaient deja en DB).
+  // Le poll ne suit plus que les scans du batch (filtres par provider), donc
+  // merged.done = avancement reel de CE scan.
+  const scanBatchTotal = scanBatchKeys.length > 0 ? scanBatchKeys.length : 0;
+  const scanBatchDone = scanBatchKeys.length > 0
+    ? (merged?.done ?? 0)
+    : (merged?.done ?? 0);
 
   // Cle du modele ACTUELLEMENT en cours de scan (pour le badge "EN COURS" dans la checklist et le tableau).
   const activeScanKey = scanning && scanBatchKeys.length > 0
@@ -2633,8 +2699,12 @@ export const ScanTab: React.FC = () => {
               </button>
             </div>
           )}
-          {/* Summary: 3 cartes resume a droite, meme hauteur que le bloc toggle (h-full) */}
-          {allDone && (
+          {/* Summary: 3 cartes resume a droite, meme hauteur que le bloc toggle (h-full).
+              FIX 2026-08-22 (Manager) : on affiche des qu'il y a des resultats
+              (resultModels.length > 0), PAS uniquement a la fin du scan (allDone).
+              Sinon pendant un scan en cours (status 'running') les compteurs
+              OK/KO/ORANGE/TIMEOUT disparaissaient. */}
+          {resultModels.length > 0 && (
             <div className="grid grid-cols-4 gap-3 flex-1 md:h-full">
               <div className="bg-stone-900 border border-emerald-900/40 rounded-2xl flex items-center justify-center px-3 h-16 md:h-full">
                 <div className="text-center">
@@ -2672,8 +2742,10 @@ export const ScanTab: React.FC = () => {
             </div>
           )}
 
-          {/* Compteur "Ce scan" - OK/KO du batch courant */}
-          {allDone && batchTotal > 0 && (
+          {/* Compteur "Ce scan" - OK/KO du batch courant.
+              FIX 2026-08-22 (Manager) : affiche des qu'il y a des resultats
+              (meme pendant le scan en cours), pas seulement a la fin. */}
+          {resultModels.length > 0 && batchTotal > 0 && (
             <div className="grid grid-cols-4 gap-3 flex-1 md:h-full mt-2">
               <div className="bg-stone-900/50 border border-stone-800/50 rounded-xl flex items-center justify-center px-3 h-14 md:h-full">
                 <div className="text-center">

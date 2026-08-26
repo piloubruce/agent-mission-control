@@ -2053,6 +2053,31 @@ def _mc_provider_model_ids(provider, *, force_live=False, base_url=None):
                     return models, False
             except Exception as exc:  # noqa: BLE001
                 print("[model_catalog] custom %s probe failed:" % prov, exc)
+    # Providers declared in the top-level `providers:` section with an `api:`
+    # endpoint (e.g. OMNI-ROUTE). Probe their /v1/models live so they are
+    # scannable exactly like custom_providers. Read-only config access.
+    try:
+        import yaml
+        _cfg_path = os.path.join(HERMES_HOME, "config.yaml")
+        if os.path.exists(_cfg_path):
+            with open(_cfg_path, "r") as _fh:
+                _cfg = yaml.safe_load(_fh) or {}
+            _providers = _cfg.get("providers") or {}
+            _entry = _providers.get(prov) or _providers.get(prov.upper())
+            if isinstance(_entry, dict):
+                _api = (_entry.get("api") or "").strip()
+                if _api:
+                    _key_env = _entry.get("key_env") or ""
+                    _key = (os.environ.get(_key_env) or "").strip() if _key_env else ""
+                    try:
+                        res = hm.probe_api_models(_key, _api.rstrip("/") + "/v1", timeout=10)
+                        models = list(res.get("models") or [])
+                        if models:
+                            return models, False
+                    except Exception as exc:  # noqa: BLE001
+                        print("[model_catalog] providers:%s probe failed:" % prov, exc)
+    except Exception:  # noqa: BLE001
+        pass
     return [], True
 
 
@@ -2220,6 +2245,58 @@ def read_model_catalog(provider=None):
             "count": len(models),
             "models": [{"id": m, "description": ""} for m in models],
         }
+
+    # 5) Providers declared in Hermes config `providers:` with an explicit
+    #    `api:` URL (e.g. OMNI-ROUTE). These have NO installed plugin dir, so
+    #    list_available_providers() never returns them, yet they are fully
+    #    usable in Hermes Agent (the user moved them out of custom_providers
+    #    to fix reasoning/think payload issues). Surface them in MC by probing
+    #    their live /v1/models, exactly like the custom_providers path. Name is
+    #    normalized (OMNI-ROUTE -> omni-route) for consistent UI/picker keys.
+    #    READ-ONLY: this does NOT modify config.yaml or .env.
+    if hm is not None:
+        try:
+            _pp_cfg_path = os.path.join(HERMES_HOME, "config.yaml")
+            with open(_pp_cfg_path, "r", encoding="utf-8") as _pp_fh:
+                _pp_cfg = yaml.safe_load(_pp_fh) or {}
+            _pp_providers = _pp_cfg.get("providers") if isinstance(_pp_cfg, dict) else None
+            if isinstance(_pp_providers, dict):
+                for _ppn, _ppb in _pp_providers.items():
+                    if not isinstance(_ppb, dict):
+                        continue
+                    _pp_api = (_ppb.get("api") or "").strip()
+                    if not _pp_api:
+                        continue
+                    _pp_base = _pp_api.rstrip("/")
+                    if _pp_base.endswith("/v1"):
+                        _pp_base = _pp_base[:-3]
+                    _pp_key = _ppb.get("key_env") or _ppb.get("key") or _ppb.get("api_key") or ""
+                    if isinstance(_pp_key, str) and _pp_key and "=" not in _pp_key and _pp_key.isupper():
+                        _pp_key = os.environ.get(_pp_key, "")
+                    _pp_key = _pp_key if isinstance(_pp_key, str) else ""
+                    _pp_key_name = (_ppn or "").strip().lower().replace("_", "-")
+                    if not _pp_key_name or _pp_key_name in providers:
+                        continue
+                    if _pp_key_name in _disabled_providers:
+                        continue
+                    if _pp_key_name == "custom":
+                        continue
+                    _load_hermes_dotenv()
+                    try:
+                        with _muted_output():
+                            _pp_res = hm.probe_api_models(_pp_key, _pp_base + "/v1", timeout=8)
+                        _pp_models = list(_pp_res.get("models") or [])
+                    except Exception as _pp_exc:  # noqa: BLE001
+                        print("[model_catalog] providers: probe failed for %s:" % _pp_key_name, _pp_exc)
+                        _pp_models = []
+                    providers[_pp_key_name] = {
+                        "display_name": _ppn.replace("-", " ").title(),
+                        "freeform": not _pp_models,
+                        "count": len(_pp_models),
+                        "models": [{"id": _m, "description": ""} for _m in _pp_models],
+                    }
+        except Exception as _pp_exc:  # noqa: BLE001
+            print("[model_catalog] providers: section read failed:", _pp_exc)
 
     # Synchronize count with actual models list length (fix stale count from
     # catalog JSON where count=0 but models populated from curated/builtin sources).
@@ -2677,6 +2754,20 @@ def read_agentlogs():
             datetime.date.today(), datetime.time.min
         ).timestamp()
 
+        def _safe_remove_db(path):
+            # Remove a temp sqlite copy AND its -shm/-wal companions so the
+            # tmpfs never fills with orphaned tmpXXXXXX.db-shm files (the leak
+            # that saturated /tmp and broke live chat streaming on 2026-08-20).
+            if not path:
+                return
+            for suf in ("", "-shm", "-wal"):
+                p = path + suf
+                try:
+                    if os.path.exists(p):
+                        os.remove(p)
+                except Exception:
+                    pass
+
         # --- (A) Cron / tâches planifiées (executions.db) ---
         # Agrégé PAR job_id : un cron qui tourne toutes les 3 min ne doit pas
         # inonder la liste. Une seule ligne par job avec le nb d'exécutions
@@ -2693,7 +2784,7 @@ def read_agentlogs():
                 "ORDER BY finished_at DESC"
             ).fetchall()
             con.close()
-            os.remove(_tmp)
+            _safe_remove_db(_tmp)
             # Aggregation par job_id
             agg = {}  # job_id -> {count, completed, failed, last_ts, last_err}
             for r in rows:
@@ -2761,11 +2852,8 @@ def read_agentlogs():
                 except Exception:
                     continue
                 finally:
-                    if _tmp and os.path.exists(_tmp):
-                        try:
-                            os.remove(_tmp)
-                        except Exception:
-                            pass
+                    if _tmp:
+                        _safe_remove_db(_tmp)
                 for s in rows:
                     la = s.get("last_activity_at") or 0
                     if la < _mid:
@@ -2922,6 +3010,18 @@ def _init_scan_results_db():
             except Exception:
                 # duplicate column name -> already migrated, fine
                 pass
+        # 2026-08-24 - SPECS DU MODELE : context_length, parameter_count, specs_display, specs_error
+        # Remplis par _fetch_model_specs() lors du scan ou de la sonde capacites.
+        for _col, _typ in (("context_length", "INTEGER"),
+                           ("parameter_count", "TEXT"),
+                           ("specs_display", "TEXT"),
+                           ("specs_error", "TEXT")):
+            if _col in _existing_cols:
+                continue
+            try:
+                con.execute("ALTER TABLE scan_results ADD COLUMN %s %s" % (_col, _typ))
+            except Exception:
+                pass
         con.commit()
     finally:
         con.close()
@@ -2931,7 +3031,9 @@ def _save_scan_result(provider, model, ok, reason=None,
                       latency_ms=None, tokens_per_sec=None,
                       last_checked=None, last_cap_check=None,
                       vision_supported=None, reasoning_supported=None,
-                      tools_supported=None, life_state=None, life_answer=None):
+                      tools_supported=None, life_state=None, life_answer=None,
+                      context_length=None, parameter_count=None,
+                      specs_display=None, specs_error=None):
     """UPSERT a single scan probe result into scan_results.
 
     Called at the end of every _probe_one so each model's status/latency/tok/s
@@ -2950,7 +3052,8 @@ def _save_scan_result(provider, model, ok, reason=None,
                 "INSERT OR REPLACE INTO scan_results "
                 "(provider, model, ok, reason, latency_ms, tokens_per_sec, "
                 " last_checked, last_cap_check, vision_supported, "
-                " reasoning_supported, tools_supported, life_state, life_answer) "
+                " reasoning_supported, tools_supported, life_state, life_answer, "
+                " context_length, parameter_count, specs_display, specs_error) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, "
                 "  COALESCE(?, (SELECT last_cap_check FROM scan_results "
                 "             WHERE provider=? AND model=?)), "
@@ -2963,6 +3066,14 @@ def _save_scan_result(provider, model, ok, reason=None,
                 "  COALESCE(?, (SELECT life_state FROM scan_results "
                 "             WHERE provider=? AND model=?)), "
                 "  COALESCE(?, (SELECT life_answer FROM scan_results "
+                "             WHERE provider=? AND model=?)), "
+                "  COALESCE(?, (SELECT context_length FROM scan_results "
+                "             WHERE provider=? AND model=?)), "
+                "  COALESCE(?, (SELECT parameter_count FROM scan_results "
+                "             WHERE provider=? AND model=?)), "
+                "  COALESCE(?, (SELECT specs_display FROM scan_results "
+                "             WHERE provider=? AND model=?)), "
+                "  COALESCE(?, (SELECT specs_error FROM scan_results "
                 "             WHERE provider=? AND model=?)))",
                 (provider, model,
                  None if ok is None else (1 if ok else 0),
@@ -2978,6 +3089,14 @@ def _save_scan_result(provider, model, ok, reason=None,
                  life_state,
                  provider, model,
                  life_answer,
+                 provider, model,
+                 context_length,
+                 provider, model,
+                 parameter_count,
+                 provider, model,
+                 specs_display,
+                 provider, model,
+                 specs_error,
                  provider, model),
             )
             con.commit()
@@ -3155,7 +3274,8 @@ def _get_scan_results(provider=None):
                     "tokens_per_sec, last_checked, last_cap_check, "
                     "vision_supported, reasoning_supported, tools_supported, "
                     "vision_conf, reasoning_conf, tools_conf, cap_neterr, "
-                    "life_state, life_answer "
+                    "life_state, life_answer, context_length, parameter_count, "
+                    "specs_display, specs_error "
                     "FROM scan_results WHERE provider=? ORDER BY model",
                     (provider,)).fetchall()
             else:
@@ -3164,7 +3284,8 @@ def _get_scan_results(provider=None):
                     "tokens_per_sec, last_checked, last_cap_check, "
                     "vision_supported, reasoning_supported, tools_supported, "
                     "vision_conf, reasoning_conf, tools_conf, cap_neterr, "
-                    "life_state, life_answer "
+                    "life_state, life_answer, context_length, parameter_count, "
+                    "specs_display, specs_error "
                     "FROM scan_results ORDER BY provider, model").fetchall()
         finally:
             con.close()
@@ -3186,8 +3307,11 @@ def _get_scan_results(provider=None):
         if r["last_cap_check"] is not None:
             item["last_cap_check"] = r["last_cap_check"]
         # 2026-08-11 - SOLUTION 3 (capfix) : TTL de re-validation. Si le
-        # dernier test de capacite date de > 24h, on ramene la capacite a
-        # NULL (etat indetermine) -> force un re-test au prochain scan.
+        # dernier test de capacite date de > 24h, on marque la capacite
+        # comme STALE (a re-tester) mais on GARDE la derniere valeur connue
+        # pour l'affichage historique. On n'ecrase PAS en None (ca faisait
+        # perdre l'historique OK et afficher "tout KO" dans l'UI). L'UI decide
+        # d'afficher "a verifier" via cap_stale et propose un re-test.
         _stale = (r["last_cap_check"] is not None
                   and (_now - r["last_cap_check"]) > _CAP_TTL_SECONDS)
         _cap_neterr = bool(r["cap_neterr"])
@@ -3195,10 +3319,12 @@ def _get_scan_results(provider=None):
                            ("reasoning_supported", "reasoning_supported"),
                            ("tools_supported", "tools_supported")):
             _val = r[_col]
-            if _val is not None and _stale:
-                _val = None  # TTL depasse -> indetermine, a re-tester
+            # Valeur connue (meme stale) conservee pour l'affichage ; le flag
+            # cap_stale permet a l'UI de proposer une re-validation.
             if _val is not None:
                 item[_key] = bool(_val)
+        if _stale:
+            item["cap_stale"] = True
         # Indicateurs reseau/confiance (exploites par l'UI pour afficher
         # "a revérifier (réseau)" et le degre de certitude).
         if _cap_neterr:
@@ -3220,6 +3346,15 @@ def _get_scan_results(provider=None):
             item["life_state"] = _ls
         if r["life_answer"]:
             item["life_answer"] = r["life_answer"]
+        # 2026-08-24 - SPECS DU MODELE (contexte, params).
+        if r["context_length"] is not None:
+            item["context_length"] = r["context_length"]
+        if r["parameter_count"] is not None:
+            item["parameter_count"] = r["parameter_count"]
+        if r["specs_display"] is not None:
+            item["specs_display"] = r["specs_display"]
+        if r["specs_error"] is not None:
+            item["specs_error"] = r["specs_error"]
         out.append(item)
     return out
 
@@ -5019,6 +5154,22 @@ def _chat_log(msg):
 _RE_SESSION_ID_LINE = re.compile(r"^\s*session[_\s-]*id\s*:", re.IGNORECASE)
 
 
+def _parse_session_id(out: str) -> str | None:
+    """Extract the Hermes native session id from `hermes chat -Q` output.
+
+    Hermes prints a `session_id: <YYYYMMDD_HHMMSS_hex>` line at the end of a
+    -Q run. Parsing it from OUR worker's own output is deterministic (the
+    worker just created THAT session) — unlike `_query_session_list` which
+    returns the agent's LATEST session and races with concurrent runs.
+    """
+    if not out:
+        return None
+    m = re.search(r"session[_-]?id\s*:\s*(\d{8}_\d{6}_[0-9a-fA-F]+)", out, re.IGNORECASE)
+    if m and _RE_HERMES_SID.match(m.group(1)):
+        return m.group(1)
+    return None
+
+
 def _is_session_id_line(line: str) -> bool:
     """True si la ligne est un artifact 'session_id: ...' a exclure du reply."""
     return bool(_RE_SESSION_ID_LINE.match(line or ""))
@@ -5537,17 +5688,29 @@ def _probe_lmstudio(model: str) -> dict:
             detail = exc.read().decode("utf-8", "replace")
         except Exception:  # noqa: BLE001
             detail = str(exc)
+        reason = _scan_reason_from_error("HTTP %d: %s" % (exc.code, detail))
         # 5xx / timeout-like errors = server instable/trop lent -> TIME (jamais blacklist)
         # 4xx (auth, not found, rate limit) = KO -> ROUGE (blacklistable)
+        # 2026-08-24 - DEVELOPPEUR : "credits required" / "insufficient credits" /
+        # "quota exceeded" ne sont PAS des modeles morts — c'est un probleme de
+        # COMPTE (cle MC sans credit, alors que le modele repond ailleurs).
+        # On les traite comme 'time' (orange, a verifier) et NON comme ROUGE/KO
+        # pour eviter les faux negatifs (ex: nemotron-3-ultra-550b discute
+        # par ailleurs mais scanne KO car le compte MC OpenRouter est a sec).
+        _acct_problem = any(k in reason.lower() for k in
+                            ("credit", "quota", "insufficient", "credits required"))
         if 500 <= getattr(exc, "code", 0) < 600:
-            return {"ok": True, "reason": _scan_reason_from_error(
-                "HTTP %d: %s" % (exc.code, detail)),
-                "life_state": "time", "life_answer": "",
+            return {"ok": True, "reason": reason,
+                    "life_state": "time", "life_answer": "",
+                    "latency_ms": latency_ms, "tokens_per_sec": 0}
+        if _acct_problem:
+            # Compte sans credit -> orange "a verifier", jamais ROUGE/KO.
+            return {"ok": True, "reason": reason,
+                    "life_state": "time", "life_answer": "",
+                    "latency_ms": latency_ms, "tokens_per_sec": 0}
+        return {"ok": False, "reason": reason,
+                "life_state": "rouge", "life_answer": "",
                 "latency_ms": latency_ms, "tokens_per_sec": 0}
-        return {"ok": False, "reason": _scan_reason_from_error(
-            "HTTP %d: %s" % (exc.code, detail)),
-            "life_state": "rouge", "life_answer": "",
-            "latency_ms": latency_ms, "tokens_per_sec": 0}
     except Exception as exc:  # noqa: BLE001
         t1 = time.time()
         latency_ms = round((t1 - t0) * 1000, 1)
@@ -5596,6 +5759,27 @@ def _provider_base_url(provider: str):
     if prov in custom:
         cp = custom[prov]
         return (cp.get("base_url") or "").rstrip("/") or None, cp.get("api_key", "") or ""
+    # Also resolve from the top-level `providers:` section of config.yaml
+    # (e.g. OMNI-ROUTE declared with `api:` + `key_env:`). Same source the
+    # model catalog reads (section #5), so a provider configured there is
+    # scannable too. Read config.yaml directly (yaml.safe_load) to avoid
+    # relying on mc_backend.load_config() caching/empty results.
+    try:
+        import yaml
+        _cfg_path = os.path.join(HERMES_HOME, "config.yaml")
+        if os.path.exists(_cfg_path):
+            with open(_cfg_path, "r") as _fh:
+                _cfg = yaml.safe_load(_fh) or {}
+            _providers = _cfg.get("providers") or {}
+            _entry = _providers.get(prov) or _providers.get(prov.upper())
+            if isinstance(_entry, dict):
+                _api = (_entry.get("api") or "").strip()
+                if _api:
+                    _key_env = _entry.get("key_env") or ""
+                    _key = (os.environ.get(_key_env) or "").strip() if _key_env else ""
+                    return _api.rstrip("/"), _key
+    except Exception:  # noqa: BLE001
+        pass
     # Native / built-in providers (e.g. 'nous'): resolve base_url from the
     # Hermes config + api_key from auth.json so we can probe them DIRECTLY
     # (via _probe_api) instead of shelling out to `hermes chat`, which would
@@ -5842,17 +6026,29 @@ def _probe_api(base_url: str, model: str, api_key: str = None,
             detail = exc.read().decode("utf-8", "replace")
         except Exception:  # noqa: BLE001
             detail = str(exc)
+        reason = _scan_reason_from_error("HTTP %d: %s" % (exc.code, detail))
         # 5xx / timeout-like errors = server instable/trop lent -> TIME (jamais blacklist)
         # 4xx (auth, not found, rate limit) = KO -> ROUGE (blacklistable)
+        # 2026-08-24 - DEVELOPPEUR : "credits required" / "insufficient credits" /
+        # "quota exceeded" ne sont PAS des modeles morts — c'est un probleme de
+        # COMPTE (cle MC sans credit, alors que le modele repond ailleurs).
+        # On les traite comme 'time' (orange, a verifier) et NON comme ROUGE/KO
+        # pour eviter les faux negatifs (ex: nemotron-3-ultra-550b discute
+        # par ailleurs mais scanne KO car le compte MC OpenRouter est a sec).
+        _acct_problem = any(k in reason.lower() for k in
+                            ("credit", "quota", "insufficient", "credits required"))
         if 500 <= getattr(exc, "code", 0) < 600:
-            return {"ok": True, "reason": _scan_reason_from_error(
-                "HTTP %d: %s" % (exc.code, detail)),
-                "life_state": "time", "life_answer": "",
+            return {"ok": True, "reason": reason,
+                    "life_state": "time", "life_answer": "",
+                    "latency_ms": latency_ms, "tokens_per_sec": 0}
+        if _acct_problem:
+            # Compte sans credit -> orange "a verifier", jamais ROUGE/KO.
+            return {"ok": True, "reason": reason,
+                    "life_state": "time", "life_answer": "",
+                    "latency_ms": latency_ms, "tokens_per_sec": 0}
+        return {"ok": False, "reason": reason,
+                "life_state": "rouge", "life_answer": "",
                 "latency_ms": latency_ms, "tokens_per_sec": 0}
-        return {"ok": False, "reason": _scan_reason_from_error(
-            "HTTP %d: %s" % (exc.code, detail)),
-            "life_state": "rouge", "life_answer": "",
-            "latency_ms": latency_ms, "tokens_per_sec": 0}
     except Exception as exc:  # noqa: BLE001
         t1 = time.time()
         latency_ms = round((t1 - t0) * 1000, 1)
@@ -6471,9 +6667,201 @@ def _probe_capabilities(base_url: str, model: str, api_key: str = None, cap: str
     }
 
 # ---------------------------------------------------------------------------
-# Async scan registry (Scan tab v2): non-blocking scans + cancellation.
-# Each running scan gets a scan_id; results stream via /api/scan/status.
+# Récupération des specs du modèle (contexte, params, archi)
+# 2026-08-24 : DEVELOPPEUR — quand on scanne un modèle, on veut aussi ses
+# specs (contexte, params) sans avoir à ouvrir une session de chat pour les
+# voir. Source : API OpenRouter (/models) pour les providers proxys
+# (nous/openrouter/omni-route) + cache local en dur pour les cas hors-ligne.
 # ---------------------------------------------------------------------------
+# Cache local de specs connues (fallback si l'API est injoignable).
+_MODEL_SPECS_CACHE = {
+    "nvidia/nemotron-3-ultra-550b-a55b:free": {"context_length": 1000000, "parameter_count": "550B"},
+    "nvidia/nemotron-3-ultra-550b": {"context_length": 1000000, "parameter_count": "550B"},
+    "nvidia/nemotron-3.5-lightning:free": {"context_length": 32768, "parameter_count": "?"},
+    "omni-route/groq/groq/compound-mini": {"context_length": 131072, "parameter_count": "?"},
+    "omni-route/groq/qwen/qwen3.6-27b": {"context_length": 131072, "parameter_count": "27B"},
+    "omni-route/groq/openai/gpt-oss-120b": {"context_length": 131072, "parameter_count": "120B"},
+    "omni-route/cohere/command-a-plus-05-2026": {"context_length": 256000, "parameter_count": "?"},
+}
+
+# Cache des modèles OpenRouter (rempli au premier appel réseau réussi).
+_OPENROUTER_MODELS_CACHE = None
+_OPENROUTER_CACHE_TS = 0
+_OPENROUTER_CACHE_TTL = 3600  # 1h
+
+def _fetch_openrouter_models():
+    """Récupère la liste des modèles OpenRouter (avec context_length)."""
+    global _OPENROUTER_MODELS_CACHE, _OPENROUTER_CACHE_TS
+    now = time.time()
+    if _OPENROUTER_MODELS_CACHE is not None and (now - _OPENROUTER_CACHE_TS) < _OPENROUTER_CACHE_TTL:
+        return _OPENROUTER_MODELS_CACHE
+    try:
+        req = urllib.request.Request(
+            "https://openrouter.ai/api/v1/models",
+            headers={"User-Agent": "HermesMC/1.0", "Accept": "application/json"},
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8", "replace"))
+        models = {}
+        for m in data.get("data", []):
+            mid = m.get("id", "")
+            if not mid:
+                continue
+            ctx = m.get("context_length")
+            params = m.get("architecture", {}).get("parameter_count")
+            if ctx or params:
+                models[mid] = {
+                    "context_length": ctx,
+                    "parameter_count": str(params) if params else None,
+                }
+        if models:
+            _OPENROUTER_MODELS_CACHE = models
+            _OPENROUTER_CACHE_TS = now
+            return models
+    except Exception:  # noqa: BLE001
+        pass
+    return _OPENROUTER_MODELS_CACHE or {}
+
+def _fetch_model_specs(provider: str, model: str) -> dict:
+    """Retourne {context_length, parameter_count, specs_display, specs_error}.
+
+    ORDRE DE PRIORITE pour context_length :
+    1. Cache Hermes (context_length_cache.yaml) — source de verite universelle,
+       contient le contexte de CHAQUE modele deja charge par Hermes, peu importe
+       le provider. C'est ca qui fait que le chat affiche le bon contexte.
+    2. Cache local _MODEL_SPECS_CACHE (fallback hors-ligne)
+    3. API OpenRouter (providers proxys: nous/openrouter/omni-route)
+    - sinon {} (pas d'info dispo)
+    """
+    if not provider or not model:
+        return {}
+    prov_norm = (provider or "").strip().lower()
+    context_length = None
+    parameter_count = None
+
+    # 1. Cache Hermes (PRIORITAIRE) — contexte de tous les modeles charges
+    _hermes_ctx = _get_hermes_context(model)
+    if _hermes_ctx:
+        context_length = _hermes_ctx
+    # 2. Cache local
+    if context_length is None:
+        local = _MODEL_SPECS_CACHE.get(model) or _MODEL_SPECS_CACHE.get(model.lower())
+        if local:
+            context_length = local.get("context_length")
+            parameter_count = local.get("parameter_count")
+    # 3. OpenRouter API pour les providers proxys
+    if context_length is None and prov_norm in ("nous", "openrouter", "omni-route"):
+        try:
+            orm = _fetch_openrouter_models()
+            # Cherche correspondance exacte puis par préfixe (ex: nous/xxx -> xxx,
+            # nvidia/nvidia/xxx -> nvidia/xxx -> xxx). On teste toutes les
+            # variantes de stripping de préfixes pour gérer les IDs à double
+            # préfixe (ex: nvidia/nvidia/nemotron-3-super-120b-a12b).
+            key = model
+            _tried = set()
+            _candidates = [key]
+            # Génère toutes les variantes en retirant un préfixe à chaque fois
+            _cur = key
+            while "/" in _cur:
+                _cur = _cur.split("/", 1)[1]
+                if _cur not in _tried:
+                    _candidates.append(_cur)
+                    _tried.add(_cur)
+            for _cand in _candidates:
+                if _cand in orm:
+                    spec = orm[_cand]
+                    context_length = spec.get("context_length")
+                    parameter_count = spec.get("parameter_count")
+                    break
+        except Exception:  # noqa: BLE001
+            pass
+
+    # Construit specs_display (ex: "Ctx: 1M | Params: 550B")
+    specs_display = None
+    parts = []
+    if context_length:
+        parts.append("Ctx: %s" % _fmt_tokens(context_length))
+    if parameter_count:
+        parts.append("Params: %s" % str(parameter_count))
+    if parts:
+        specs_display = " | ".join(parts)
+
+    return {
+        "context_length": context_length,
+        "parameter_count": parameter_count,
+        "specs_display": specs_display,
+        "specs_error": None,
+    }
+
+
+def _load_hermes_context_cache():
+    """Lit le cache de context_length de Hermes (~/.hermes/context_length_cache.yaml).
+
+    Source de verite universelle : Hermes y stocke le contexte de CHAQUE modele
+    deja charge (model@base_url -> context_length). On l'utilise pour peupler
+    context_length lors du scan, peu importe le provider — pas besoin d'ajouter
+    les modeles un par un.
+    """
+    cache = {}
+    try:
+        p = os.path.join(HERMES_HOME, "context_length_cache.yaml")
+        if not os.path.exists(p):
+            return cache
+        with open(p, "r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+        raw = data.get("context_lengths") or {}
+        for key, val in raw.items():
+            # key = "model@base_url" ou "model"
+            model_part = key.split("@", 1)[0] if "@" in key else key
+            try:
+                ctx = int(val)
+            except (TypeError, ValueError):
+                ctx = None
+            if ctx:
+                cache[model_part.lower()] = ctx
+    except Exception:  # noqa: BLE001
+        pass
+    return cache
+
+
+# Cache module-level (recharge toutes les 5 min)
+_HERMES_CTX_CACHE = None
+_HERMES_CTX_CACHE_TS = 0
+_HERMES_CTX_CACHE_TTL = 300
+
+def _get_hermes_context(model: str):
+    """Retourne le context_length depuis le cache Hermes, ou None."""
+    global _HERMES_CTX_CACHE, _HERMES_CTX_CACHE_TS
+    now = time.time()
+    if _HERMES_CTX_CACHE is None or (now - _HERMES_CTX_CACHE_TS) > _HERMES_CTX_CACHE_TTL:
+        _HERMES_CTX_CACHE = _load_hermes_context_cache()
+        _HERMES_CTX_CACHE_TS = now
+    if not model:
+        return None
+    m = model.lower()
+    # Correspondance exacte d'abord
+    if m in _HERMES_CTX_CACHE:
+        return _HERMES_CTX_CACHE[m]
+    # Puis par suffixe (strip prefixes "prov/prov/...")
+    while "/" in m:
+        m = m.split("/", 1)[1]
+        if m in _HERMES_CTX_CACHE:
+            return _HERMES_CTX_CACHE[m]
+    return None
+
+
+def _fmt_tokens(n):
+    """Formate un nombre de tokens en unité lisible (ex: 1000000 -> '1M')."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return str(n)
+    if n >= 1_000_000:
+        return "%.0fM" % (n / 1_000_000)
+    if n >= 1_000:
+        return "%.0fK" % (n / 1_000)
+    return str(n)
 _SCANS: dict = {}          # scan_id -> scan state dict (see _new_scan_state)
 _SCANS_LOCK = threading.Lock()
 _CAP_RESULTS: dict = {}    # cap_id -> {"status": "running"|"done"|"error", "result": {...}}
@@ -6575,13 +6963,19 @@ def scan_provider_models_async(provider: str, model_ids: list, scan_id: str):
                  "latency_ms": None,
                  "tokens_per_sec": None}
         with _results_lock:
+            # Récupère les specs du modèle (contexte, params) si dispo.
+            _specs = _fetch_model_specs(prov, m)
             state["results"].append(
                 {"provider": prov, "model": m, "ok": r["ok"], "reason": r["reason"],
                  "life_state": r.get("life_state") or ("vert" if r.get("ok") else "rouge"),
                  "life_answer": r.get("life_answer") or "",
                  "latency_ms": r.get("latency_ms"),
                  "tokens_per_sec": r.get("tokens_per_sec"),
-                 "last_checked": time.time()})
+                 "last_checked": time.time(),
+                 "context_length": _specs.get("context_length"),
+                 "parameter_count": _specs.get("parameter_count"),
+                 "specs_display": _specs.get("specs_display"),
+                 "specs_error": _specs.get("specs_error")})
             # Auto-blacklist KO models (scan-detected) — persisted server-side.
             # PHASE 1: un "suspect" (cache probable) n'est PAS un modele mort,
             # on ne le blackliste donc pas — il est seulement non valide.
@@ -6602,7 +6996,11 @@ def scan_provider_models_async(provider: str, model_ids: list, scan_id: str):
                               time.time(),
                               life_state=(r.get("life_state")
                                           or ("vert" if r.get("ok") else "rouge")),
-                              life_answer=(r.get("life_answer") or ""))
+                              life_answer=(r.get("life_answer") or ""),
+                              context_length=_specs.get("context_length"),
+                              parameter_count=_specs.get("parameter_count"),
+                              specs_display=_specs.get("specs_display"),
+                              specs_error=_specs.get("specs_error"))
             state["done"] += 1
 
     try:
@@ -6719,10 +7117,14 @@ def _sse_broadcast_loop():
             except Exception:
                 pass
             with mc_backend._NOTIFICATIONS_LOCK:
+                # _NOTIFICATIONS contient des tuples (type,title,message,ts,agent)
+                # ; accès défensif tuple/dict (si un jour on passe en dicts).
                 fresh = [n for n in mc_backend._NOTIFICATIONS
-                         if n.get("ts", 0) > last_notif_ts]
+                         if (n[3] if isinstance(n, tuple) else n.get("ts", 0)) > last_notif_ts]
                 if fresh:
-                    last_notif_ts = max(n.get("ts", 0) for n in fresh)
+                    last_notif_ts = max(
+                        (n[3] if isinstance(n, tuple) else n.get("ts", 0)) for n in fresh
+                    )
             for q in clients:
                 try:
                     q.put_nowait(chunk)
@@ -7162,6 +7564,24 @@ class Handler(BaseHTTPRequestHandler):
                         _st["cancel"].set()
                         _st["status"] = "cancelling"
                     self._send_json({"ok": True, "status": _st["status"]})
+            elif path == "/api/scan/active":
+                # Source of truth for in-flight scans (backend registry).
+                # Lets the UI resume a polling session after navigating away
+                # and back, even if the frontend store / localStorage is in an
+                # inconsistent state: the backend is the authoritative list of
+                # scans still running. Returns only running/cancelling scans.
+                with _SCANS_LOCK:
+                    _active = []
+                    for _st in _SCANS.values():
+                        if _st.get("status") in ("running", "cancelling"):
+                            _active.append({
+                                "scan_id": _st["scan_id"],
+                                "provider": _st.get("provider", ""),
+                                "status": _st["status"],
+                                "total": _st.get("total", 0),
+                                "done": _st.get("done", 0),
+                            })
+                self._send_json({"scans": _active})
             elif path == "/api/scan/cancel-all":
                 # Force-cancel every running/cancelling scan and clear the registry.
                 with _SCANS_LOCK:
@@ -7305,10 +7725,17 @@ class Handler(BaseHTTPRequestHandler):
                         _s["provider"] = _cfg.get("provider")
                     if not _s.get("model"):
                         _s["model"] = _cfg.get("model")
+                with _MESSAGES_SSE_LOCK:
+                    _sse_snapshot = dict(_MESSAGES_SSE)
                 with _MESSAGES_LIVE_LOCK:
                     for _s in _sessions:
                         _live = _MESSAGES_LIVE.get((_a, _s.get("id")))
-                        if _live and _live.get("running"):
+                        _buf = _sse_snapshot.get((_a, _s.get("id")))
+                        # FIX (2026-08-21): running derive de l'etat SSE reel
+                        # (buf["done"]) et pas du seul dict _MESSAGES_LIVE, qui
+                        # peut rester colle a running=True (spinner fantome, BUG C).
+                        _running = bool(_live and _live.get("running")) and not bool(_buf and _buf.get("done"))
+                        if _running:
                             _s["live"] = {
                                 "running": True,
                                 "text": _live.get("text", ""),
@@ -7326,9 +7753,14 @@ class Handler(BaseHTTPRequestHandler):
                 with _MESSAGES_LIVE_LOCK:
                     _live = _MESSAGES_LIVE.get((_a, _sid)) or {
                         "running": False, "text": "", "error": None, "ts": 0}
+                with _MESSAGES_SSE_LOCK:
+                    _buf = _MESSAGES_SSE.get((_a, _sid))
                 self._send_json({
                     "agent": _a, "session_id": _sid,
-                    "running": _live.get("running", False),
+                    # FIX (2026-08-21): idem /api/messages/sessions - un buffer
+                    # SSE marque done => la generation est finie, quel que soit
+                    # l'etat colle dans _MESSAGES_LIVE.
+                    "running": bool(_live.get("running")) and not bool(_buf and _buf.get("done")),
                     "text": _live.get("text", ""),
                     "error": _live.get("error"),
                     "phase": _live.get("phase"),
@@ -7552,6 +7984,23 @@ class Handler(BaseHTTPRequestHandler):
                     self._send_json(mc_backend.save_config(patch))
                 except Exception as _e:  # noqa: BLE001
                     self._send_json({"ok": False, "error": str(_e)}, code=400)
+                return
+            if path == "/api/models/refresh":
+                # Force a full recompute of the model catalog, bypassing the
+                # in-process cache. Lets the UI pick up newly-added providers
+                # (config.yaml `providers:` endpoints, fresh `hermes setup`
+                # custom endpoints) without restarting the server. READ-ONLY:
+                # never touches config.yaml or .env.
+                try:
+                    _CATALOG_CACHE["data"] = None
+                    _payload = read_model_catalog()
+                    self._send_json({
+                        "ok": True,
+                        "providers": len(_payload.get("providers", {})),
+                        "models": sum(len(p.get("models", [])) for p in _payload.get("providers", {}).values()),
+                    })
+                except Exception as _exc:  # noqa: BLE001
+                    self._send_json({"ok": False, "error": str(_exc)}, code=500)
                 return
             # v1.17.141 - agents_order GET/POST (persistance cote serveur pour partager
             # l'ordre entre navigateurs/profils -- localStorage perdu en navigation privee).
@@ -8001,6 +8450,15 @@ class Handler(BaseHTTPRequestHandler):
                 # session id. The Hermes persistent session (for --resume) is
                 # resolved separately inside the background thread.
                 _provided = (data.get("session_id") or "").strip()
+                # FIX (2026-08-21): le front recoit des ids NATIFS depuis
+                # /api/messages/sessions. Si le caller repasse un id natif,
+                # c'est LA session Hermes a reprendre : on l'auto-mappe
+                # (mc_sid == hermes_sid) au lieu de repartir FRESH.
+                if _provided and _RE_HERMES_SID.match(_provided):
+                    _key = "%s|%s" % (_a, _provided)
+                    with _MC_SESSION_MAP_LOCK:
+                        _MC_SESSION_MAP.setdefault(_key, _provided)
+                    _save_mc_session_map()
                 _sid = _provided if _provided else (
                     "msg_%d_%s" % (int(time.time() * 1000), secrets.token_hex(4))
                 )
@@ -8027,6 +8485,21 @@ class Handler(BaseHTTPRequestHandler):
                     daemon=True,
                 ).start()
                 self._send_json({"ok": True, "agent": _a, "session_id": _sid})
+            elif path == "/api/messages/resolve-native":
+                # FIX (2026-08-22) : le front recoit le mc_sid (msg_…) de
+                # /api/messages/send, MAIS la session native creee par le worker
+                # a un id DIFFERENT (20260822_…). Le front doit ouvrir EXACTEMENT
+                # la session native => il interroge ce endpoint pour resoudre le
+                # mc_sid en id natif via _MC_SESSION_MAP (peuple dans le worker,
+                # agent|mc_sid -> natif, cf. L9464).
+                _a = (data.get("agent") or "").strip().lower()
+                _mc = (data.get("mc_sid") or "").strip()
+                _nat = None
+                if _a and _mc:
+                    with _MC_SESSION_MAP_LOCK:
+                        _nat = _MC_SESSION_MAP.get("%s|%s" % (_a, _mc))
+                self._send_json({"agent": _a, "mc_sid": _mc,
+                                 "native_session_id": _nat})
             elif path == "/api/messages/cancel":
                 # Feature 5 (Annuler) : stoppe la generation EN COURS pour un
                 # agent + session precise. Tue UNIQUEMENT le groupe de process
@@ -8041,7 +8514,20 @@ class Handler(BaseHTTPRequestHandler):
                 if not _sid:
                     self._send_json({"error": "session_id requis"}, code=400)
                     return
+                # FIX (2026-08-21): unification d'ids -> le front peut envoyer un
+                # id NATIF (20260821_…) alors que le worker est indexé par le mc_sid
+                # (msg_…). Si la clé directe n'existe pas, on résout le mc_sid via
+                # _MC_SESSION_MAP (agent|mc_sid -> natif) pour annuler la bonne session.
                 key = (_a, _sid)
+                with _MESSAGES_LIVE_LOCK:
+                    _direct = (_a, _sid) in _MESSAGES_LIVE
+                if not _direct:
+                    with _MC_SESSION_MAP_LOCK:
+                        _map = dict(_MC_SESSION_MAP)
+                    for _k, _v in _map.items():
+                        if _k.startswith(_a + "|") and _v == _sid and _k.split("|", 1)[1].startswith("msg_"):
+                            key = (_a, _k.split("|", 1)[1])
+                            break
                 cancelled = False
                 with _MESSAGES_LIVE_LOCK:
                     entry = _MESSAGES_LIVE.get(key)
@@ -8162,6 +8648,11 @@ class Handler(BaseHTTPRequestHandler):
                 _q = parse_qs(parsed.query)
                 _clear = _q.get("clear", ["0"])[0] in ("1", "true", "yes")
                 self._send_json(mc_backend.get_notifications(clear=_clear))
+                return
+            elif path == "/api/notifications/clear":
+                # Efface des notifs côté serveur (ids=None => tout).
+                _ids = data.get("ids")
+                self._send_json(mc_backend.clear_notifications(_ids))
                 return
             else:
                 self._send_text("Not Found", code=404)
@@ -8626,26 +9117,24 @@ def _bootstrap_mc_session(agent: str, mc_sid: str):
 
 
 def _ensure_persistent_session(agent: str, mc_sid: str):
-    """Ensure a persistent Hermes session exists for (agent, mc_sid).
+    """Return the cached Hermes session id for (agent, mc_sid), or None.
 
-    Resolution order:
-      1. Check in-memory cache (_MC_SESSION_MAP) for existing mapping
-      2. Check on-disk file for existing mapping
-      3. Bootstrap a fresh Hermes session (one-time)
-
-    Returns the hermes_sid for --resume, or None on failure.
-
-    This is the FIX for Option A: reactiver --resume PROPERMENT (sans rebootstrap
-    a chaque message). Le bootstrap ne se fait QU'UNE FOIS par (agent, mc_sid).
+    FIX 2026-08-20 (non-bloquant) : on ne bootstrap PLUS ici. Le bootstrap
+    lanceait `hermes chat -Q` qui peut TIMEOUT (provider lent type omni-route /
+    mistral) -> bloquait l'envoi et jamais le map n'etait sauve -> retombait en
+    FRESH -> recréait une session native à chaque message (bug '4 questions =
+    4 sessions'). A la place, le worker cree la session native au 1er message
+    (FRESH) puis recupere son sid et le sauve dans le map (voir
+    _messages_send_bg). Les messages suivants (meme mc_sid) reprennent via
+    --resume.
     """
-    # Check if we already have a mapping for this (agent, mc_sid)
+    # Check in-memory cache
     key = "%s|%s" % (agent, mc_sid)
     with _MC_SESSION_MAP_LOCK:
         if key in _MC_SESSION_MAP:
             cached_sid = _MC_SESSION_MAP[key]
             if cached_sid and _RE_HERMES_SID.match(cached_sid):
                 return cached_sid
-
     # Load from disk (in case of server restart)
     _load_mc_session_map()
     with _MC_SESSION_MAP_LOCK:
@@ -8653,9 +9142,7 @@ def _ensure_persistent_session(agent: str, mc_sid: str):
             cached_sid = _MC_SESSION_MAP[key]
             if cached_sid and _RE_HERMES_SID.match(cached_sid):
                 return cached_sid
-
-    # No existing session - bootstrap a new one (ONE-TIME per mc_sid)
-    return _bootstrap_mc_session(agent, mc_sid)
+    return None
 
 
 def _messages_file(agent: str) -> str:
@@ -8981,8 +9468,41 @@ def _messages_send_bg(agent: str, sid: str, user_text: str, files: list,
     key = (agent, sid)
     with _MESSAGES_LIVE_LOCK:
         _MESSAGES_LIVE[key] = {"running": True, "text": "", "error": None, "ts": time.time()}
+    # FIX MC (2026-08-21): sur une session EXISTANTE tous les messages partagent
+    # le meme sid, donc le meme buffer _MESSAGES_SSE. Un `done=True` residuel du
+    # message precedent faisait fermer immediatement le flux SSE du message
+    # suivant (3e message invisible en live, visible seulement apres F5).
+    # On repart donc d'un buffer PROPRE au demarrage de chaque worker.
+    # Reinit EN PLACE (pas de nouveau dict) : un flux SSE deja connecte garde
+    # une reference sur ce dict et son Event ; le remplacer l'orphanerait.
+    with _MESSAGES_SSE_LOCK:
+        buf = _MESSAGES_SSE.get(key)
+        if buf is None:
+            _MESSAGES_SSE[key] = {
+                "chunks": collections.deque(),
+                "event": threading.Event(),
+                "done": False,
+                "error": None,
+            }
+        else:
+            buf["chunks"].clear()
+            buf["done"] = False
+            buf["error"] = None
+            buf["event"].clear()
     hermes_bin = _resolve_hermes_bin()
     eff_model, eff_provider = _resolve_effective_model(agent, None, None)
+    # --- FIX CONCESSION 2026-08-18 (fuite de sessions natives) ---
+    # On reprend UNE session Hermes native par (agent, sid) MC via --resume,
+    # au lieu de lancer `hermes chat -Q` sans --resume (qui creait une
+    # NOUVELLE session native a CHAQUE message -> 4 questions = 4 sessions
+    # dans l'historique de l'agent). L'id natif est resolu UNE FOIS par
+    # (agent, sid) et mis en cache sur disque (mc_session_map.json).
+    # Le cleanup natif (suppression de la derniere session via
+    # _query_session_list) est supprime plus bas : on CONSERVE la session
+    # native car c'est elle la source de verite lue par _read_native_sessions.
+    hermes_sid = _ensure_persistent_session(agent, sid)
+    if not hermes_sid:
+        _chat_log("messages send agent=%s sid=%s : echec resolution session native persistante (resume desactive)" % (agent, sid))
     _t0 = time.time()  # token-debit timing reference (set before hermes runs)
 
     # --- BUG MC FIX (2026-08-03): NO --resume on the shared state.db.
@@ -9019,15 +9539,22 @@ def _messages_send_bg(agent: str, sid: str, user_text: str, files: list,
     except Exception as _exc:
         _chat_log("persist_user_msg failed agent=%s sid=%s: %s" % (agent, sid, _exc))
     
-    # --- Spawn hermes chat WITHOUT --resume (fresh session each time) ---
-    # The history is injected via the prompt instead. This avoids WAL contention
-    # on the shared state.db (Telegram gateway regression, 2026-07-28).
-    # 2026-08-04: Use the NATIVE agent profile so chats actually respond.
-    # The cloned -mc profiles (created for history isolation) had wrong provider
-    # creds (Anthropic instead of the nous fallback), causing every MC message to
-    # fail auth. Revert to native profile; history isolation will be reworked by
-    # the debug agent separately.
-    cmd = [hermes_bin, "chat", "-p", _hermes_profile(agent), "-q", full_prompt, "-Q", "--reasoning", "none", "--source", "mc"]
+    # --- Spawn hermes chat AVEC --resume (reprend UNE session native par
+    #     conversation MC). Cela EVITE de creer une nouvelle session native a
+    #     chaque message (bug 2026-08-18 : 4 questions = 4 sessions). Hermes
+    #     gère l'historique du contexte lui-meme via --resume, donc on n'injecte
+    #     PLUS l'historique dans le prompt (qui doublonnait la memoire).
+    #     Repli : si hermes_sid est absent (bootstrap echoue), on retombe sur
+    #     un chat frais (comportement d'avant) pour ne pas bloquer l'envoi.
+    if hermes_sid:
+        cmd = [hermes_bin, "chat", "-p", _hermes_profile(agent),
+               "--resume", hermes_sid, "-q", user_text, "-Q",
+               "--reasoning", "none", "--source", "mc"]
+        _chat_log("messages send agent=%s sid=%s RESUME hermes_sid=%s" % (agent, sid, hermes_sid))
+    else:
+        cmd = [hermes_bin, "chat", "-p", _hermes_profile(agent), "-q", full_prompt, "-Q",
+               "--reasoning", "none", "--source", "mc"]
+        _chat_log("messages send agent=%s sid=%s FRESH (resume indispo)" % (agent, sid))
     # PILU (2026-08-18) : hermes chat en mode non-TTY bufferise sa stdout par
     # blocs -> le fichier de sortie reste vide jusqu'a la fin -> le streaming
     # token-par-token ne livre rien en direct (reponse visible qu'au refresh).
@@ -9197,27 +9724,41 @@ def _messages_send_bg(agent: str, sid: str, user_text: str, files: list,
             sess["message_count"] = len(sess["messages"])
             sess["updated_at"] = time.time()
             _write_agent_sessions(agent, sessions)
-            # ISOLATION SESSIONS MC (piloubruce 2026-08-18) : le worker
-            # `hermes chat -p <agent>` persiste aussi sa session dans la base
-            # SQLite native ~/.hermes/sessions (celle que liste le dashboard
-            # Hermes agent). Le MC a DEJA sa propre base mc_messages.db + son
-            # fichier sessions/<agent>.json, donc on supprime la session native
-            # pour qu'elle ne pollue pas l'historique Hermes agent. On recupere
-            # l'id natif via `hermes sessions list -p <agent>` (dernier = celui
-            # du tour courant) puis `hermes sessions delete`.
-            try:
-                _native_sid = _query_session_list(agent)
-                if _native_sid:
-                    _del = [_resolve_hermes_bin(), "sessions", "delete",
-                            "-p", _hermes_profile(agent), _native_sid]
-                    _chat_log("MC isolation: suppression session hermes native %s" % _native_sid)
-                    try:
-                        subprocess.run(_del, env=_chat_env(), timeout=60,
-                                       capture_output=True, text=True)
-                    except Exception as _e:
-                        _chat_log("MC isolation: echec delete %s: %s" % (_native_sid, _e))
-            except Exception as _e:
-                _chat_log("MC isolation cleanup error: %s" % _e)
+            # FIX FUITE SESSIONS NATIVES (2026-08-20) : avec --resume on reprend
+            # UNE session native par conversation MC. Quand hermes_sid etait
+            # None (1er message d'une conversation -> on a lance FRESH), on
+            # recupere le sid natif QUE le worker vient de creer (derniere
+            # session de l'agent via _query_session_list) et on le sauve dans
+            # le map (agent, mc_sid) -> les messages suivants (meme mc_sid)
+            # feront --resume dessus au lieu de recréer. On CONSERVE cette
+            # session native (c'est la source de verite lue par
+            # _read_native_sessions) : plus de cleanup supprimant la derniere.
+            if not hermes_sid and persist:
+                # Capture deterministe du sid natif QUE le worker vient de
+                # creer : on parse la ligne `session_id: ...` dans la sortie
+                # `out` du worker (et pas _query_session_list qui renvoie la
+                # DERNIERE session de l'agent = race si parallele). On lie ce
+                # sid au (agent, mc_sid) dans le map -> les messages suivants
+                # (meme mc_sid) feront --resume dessus au lieu de recréer.
+                try:
+                    _new_native = _parse_session_id(out)
+                    if _new_native:
+                        key = "%s|%s" % (agent, sid)
+                        with _MC_SESSION_MAP_LOCK:
+                            _MC_SESSION_MAP[key] = _new_native
+                            # FIX (2026-08-21): cle identite agent|<sid natif>
+                            # -> la 2e question (id natif repasse par le front)
+                            # reprend CETTE session et non une nouvelle.
+                            _MC_SESSION_MAP.setdefault(
+                                "%s|%s" % (agent, _new_native), _new_native)
+                        _save_mc_session_map()
+                        hermes_sid = _new_native
+                        _chat_log("MC: nouveau sid natif capture %s pour (agent=%s, mc_sid=%s)" % (_new_native, agent, sid))
+                    else:
+                        _chat_log("MC: pas de session_id trouve dans la sortie (pas de capture)")
+                except Exception as _e:
+                    _chat_log("MC: echec capture sid natif: %s" % _e)
+            _chat_log("MC: session native hermes %s conservee (resume, pas de cleanup)" % hermes_sid)
         except Exception as exc:  # noqa: BLE001
             _chat_log("messages persist failed agent=%s: %s" % (agent, exc))
     else:

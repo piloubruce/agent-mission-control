@@ -21,7 +21,7 @@ import {
 import { getConfig, setConfig } from '../../lib/mcApi';
 import type { CfgSource } from '../../lib/mcApi';
 import { createBackup, listBackups, downloadBackupUrl, restoreBackup } from '../../lib/mcApi';
-import { getModelCatalog, type ModelCatalog } from '../../api';
+import { getModelCatalog, refreshModelCatalog, type ModelCatalog } from '../../api';
 
 
 // Row state pour l'édition des raccourcis
@@ -141,6 +141,7 @@ export const ConfigTab: React.FC = () => {
   const [scanProvLoadError, setScanProvLoadError] = useState<string | null>(null);
   const [scanProvSaving, setScanProvSaving] = useState(false);
   const [scanProvSaved, setScanProvSaved] = useState(false);
+  const [scanProvRefreshing, setScanProvRefreshing] = useState(false);
   const [backupList, setBackupList] = useState<Array<{name: string; size: number; mtime: number}>>([]);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -248,6 +249,41 @@ const reload = async () => {
     void loadScanProviders();
     return () => { cancelled = true; };
   }, []);
+
+  // Actualiser : force le backend a relire le catalogue (nouveaux providers
+  // ajoutes via config.yaml `providers:` ou `hermes setup`), puis recharge
+  // la liste + la selection scan_providers courante. Ne touche pas la config.
+  const refreshScanProviders = async () => {
+    setScanProvRefreshing(true);
+    try {
+      const res = await refreshModelCatalog();
+      if (!res || res.ok === false) {
+        throw new Error(res?.error || 'refresh echoue');
+      }
+      const cat = await getModelCatalog();
+      setCatalog(cat);
+      let cfg: Record<string, boolean> = {};
+      try {
+        const resp = await fetch('/api/config/scan_providers');
+        if (resp.ok) {
+          const data = await resp.json();
+          cfg = (data.scan_providers || {}) as Record<string, boolean>;
+        }
+      } catch { /* garde {} */ }
+      const hasCfg = Object.keys(cfg).length > 0;
+      const next: Record<string, boolean> = {};
+      for (const key of Object.keys(cat.providers || {})) {
+        next[key] = hasCfg ? cfg[key] === true : true;
+      }
+      setScanProviders(next);
+      setScanProvError(null);
+      setScanProvLoadError(null);
+    } catch (e) {
+      setScanProvLoadError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setScanProvRefreshing(false);
+    }
+  };
 
   // Sauvegarde immédiate : POST {"scan_providers": {...}} + flash 2s.
   const saveScanProviders = async (next: Record<string, boolean>) => {
@@ -640,9 +676,21 @@ useEffect(() => {
 
       {/* --- Providers visibles dans Scan ------------------------------- */}
       <div className={card}>
-        <h3 className="text-stone-300 font-medium mb-1">Providers visibles dans Scan</h3>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-stone-300 font-medium">Providers visibles dans Scan</h3>
+          <button
+            type="button"
+            onClick={refreshScanProviders}
+            disabled={scanProvRefreshing || !scanProvLoaded}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 disabled:opacity-50 disabled:cursor-not-allowed text-stone-200 text-xs font-medium transition-colors"
+            title="Relire les providers depuis la config Hermès (sans redémarrer le serveur)"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${scanProvRefreshing ? 'animate-spin' : ''}`} />
+            {scanProvRefreshing ? 'Actualisation…' : 'Actualiser'}
+          </button>
+        </div>
         <p className="text-xs text-stone-500 mb-4">
-          Les providers décochés n'apparaîtront pas dans l'onglet Scan.
+          Les providers décochés n'apparaîtront pas dans l'onglet Scan. Cliquez « Actualiser » après avoir ajouté un provider (config.yaml ou hermes setup).
         </p>
         {!scanProvLoaded ? (
           <div className="flex items-center gap-2 text-sm text-stone-500">

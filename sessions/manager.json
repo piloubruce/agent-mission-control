@@ -2,217 +2,896 @@
   "agent": "manager",
   "sessions": [
     {
-      "id": "msg_1787005630925_6d61d3c4",
+      "id": "msg_probe_1787219249041",
       "agent": "manager",
-      "title": "Salut j'aimerais que tu me répondes n'importe quoi mais sur ",
-      "created_at": 1787005631.471054,
-      "updated_at": 1787005829.9368,
-      "message_count": 5,
-      "messages": [
-        {
-          "role": "user",
-          "text": "Salut j'aimerais que tu me répondes n'importe quoi mais sur une longueur de 10 lignes",
-          "ts": 1787005631.4710567,
-          "attachments": []
-        },
-        {
-          "role": "agent",
-          "text": "Salut ! Alors voilà, je te pond un petit texte de dix lignes comme demandé, purement pour le plaisir de remplir l'espace sans avoir une vraie consigne derrière. Les chats d'IA sont drôles comme ça, parfois on leur demande juste de bavarder pour voir ce qu'ils vont sortir. Le café refroidit lentement sur le bord de la fenêtre pendant que la pluie tape contre les carreaux. Quelque part dans le jardin, un oiseau essaie désespérément de chanter malgré le bruit de la circulation. Les nuages gris promettent une après-midi lugubre mais paisible. Je me demande ce que tu vas faire de ces dix lignes une fois qu'elles seront écrites. Peut-être les garder comme preuve que l'on peut perdre du temps intelligemment. Ou alors les effacer aussitôt, comme on balaie des miettes de table. En tout cas c'est fait, et moi je suis content d'avoir papoté un peu. À la prochaine, et n'hésite pas si tu as un vrai truc à me demander !\n\nsession_id: 20260818_002712_653474",
-          "ts": 1787005641.5147686,
-          "error": null,
-          "attachments": []
-        },
-        {
-          "role": "user",
-          "text": "Alors je sais pas comment tu comptes les lignes Bon c'est vrai qu'après ça dépend de la largeur de l'écran Mais malheureusement moi j'en ai que 5",
-          "ts": 1787005670.30721,
-          "attachments": []
-        },
-        {
-          "role": "agent",
-          "text": "Tu as raison, je me suis fait avoir : dans un terminal, \"lignes\" = lignes de rendu, donc ça dépend de la largeur de ta fenêtre. Mon bloc de 10 phrases s'est affiché en 5 lignes chez toi parce que ton écran est large et que le texte s'est wrapping sur moins de lignes que prévu.\n\nMon compte était sur le nombre de phrases/séparateurs, pas sur le rendu visuel. C'est un vrai piège : je ne vois pas la largeur de ton terminal, donc je ne peux pas garantir un nombre de lignes affichées.\n\nSi tu veux vraiment 10 lignes visibles, la seule façon fiable c'est de forcer un retour à la ligne à chaque phrase (un `\\n` explicite), pas de compter sur le wrapping auto.\n\nExemple avec des sauts de ligne réels :\n\n1. Salut, on retry le coup des dix lignes.\n2. Cette fois je force le retour chariot.\n3. Comme ça peu importe la largeur de ton écran.\n4. Chaque phrase occupe sa propre ligne.\n5. C'est beaucoup plus prévisible.\n6. Le wrapping ne peut plus nous piéger.\n7. Tu devrais voir dix lignes bien nettes.\n8. Même sur un terminal large.\n9. Ou un terminal étroit d'ailleurs.\n10. Voilà, mission accomplie pour de vrai.\n\nSi tu préfères, je peux te générer ça avec des vrais `\\n` à la demande pour tes prochains tests.\n\nsession_id: 20260818_002751_4442a8",
-          "ts": 1787005688.8466594,
-          "error": null,
-          "attachments": []
-        },
-        {
-          "role": "user",
-          "text": "OK par contre j'aimerais que tu regardes dans mon dashboard MC, Parce que j'ai un petit souci pendant que tu es en train de réfléchir, Avant de me répondre, Dans l'historique chat J'ai mes historiques qui sautillent C'est on voit un petit décalage il remonte il redescend il remonte il redescend et c'est très désagréable Donc je sais pas ce qui pose ce problème là mais il faut le corriger",
-          "ts": 1787005829.9367986,
-          "attachments": []
-        }
-      ]
-    },
-    {
-      "id": "msg_1787006059300_e61bf392",
-      "agent": "manager",
-      "title": "teste session 1",
-      "created_at": 1787006059.868658,
-      "updated_at": 1787006079.5018275,
+      "title": "reponds en exactement 5 mots",
+      "created_at": 1787219250.536027,
+      "updated_at": 1787219259.4034271,
       "message_count": 2,
       "messages": [
         {
           "role": "user",
-          "text": "teste session 1",
-          "ts": 1787006059.8686612,
+          "text": "reponds en exactement 5 mots",
+          "ts": 1787219250.5360315,
           "attachments": []
         },
         {
           "role": "agent",
-          "text": "Test session 1 confirmé et exécuté.\n\nRésultat:\n- Utilisateur: piloubruce\n- Hôte: debian (VM 192.168.1.240)\n- Répertoire: /home/piloubruce/agent-mission-control\n- Date: mar. 18 août 2026 00:34 CEST\n- Session Hermes active: OK, outil session_search répond (3 sessions récentes listées dont 1 cron)\n\nTout fonctionne côté session CLI. Tu veux tester quoi d'autre en session 1 (dashboard MC, un agent de la flotte, un skill) ?\n\nsession_id: 20260818_003420_8f03d5",
-          "ts": 1787006079.5018237,
+          "text": "Je réponds avec exactement cinq mots.\n\nsession_id: 20260820_114731_693d87",
+          "ts": 1787219259.4034243,
           "error": null,
           "attachments": []
         }
       ]
     },
     {
-      "id": "msg_1787006090179_d27f0dd8",
+      "id": "msg_1787343485519_c962ab76",
       "agent": "manager",
-      "title": "teste session 2",
-      "created_at": 1787006090.9675891,
-      "updated_at": 1787006107.4151099,
+      "title": "Salut",
+      "created_at": 1787343485.895243,
+      "updated_at": 1787343494.325718,
       "message_count": 2,
       "messages": [
         {
           "role": "user",
-          "text": "teste session 2",
-          "ts": 1787006090.9675927,
+          "text": "Salut",
+          "ts": 1787343485.8952448,
           "attachments": []
         },
         {
           "role": "agent",
-          "text": "Test session 2 confirmé, exécuté au passé composé:\n\n- Session active: nouvelle session CLI (celle-ci) tourne sous profil default sur debian.\n- Heure locale: mar. 18 août 2026 00:34:59 CEST.\n- User: piloubruce / host: debian / cwd: /home/piloubruce/agent-mission-control.\n- Sessions récentes listées: \"teste session 1\" (5 msg), \"Écrire 10 lignes aléatoires\" (18 msg), et une session vide (2 msg). Tout est bien persisté en base.\n\nLe mécanisme de session fonctionne: cette session 2 est bien isolée de la session 1 et enregistrée. Tu veux que je teste autre chose (reprise de contexte, delegation, ou un appel réel d'un agent) ?\n\nsession_id: 20260818_003451_6f0546",
-          "ts": 1787006107.4151053,
+          "text": "Salut ! Je suis MANAGER, coordinateur de ta flotte Hermes. Je tourne sur la VM Debian (.240). Prêt à bosser.\n\nQu'est-ce que tu veux faire ?\n\nsession_id: 20260821_221806_9635ea",
+          "ts": 1787343494.325716,
           "error": null,
           "attachments": []
         }
       ]
     },
     {
-      "id": "msg_1787006155399_e1b1d06c",
+      "id": "20260821_221806_9635ea",
       "agent": "manager",
-      "title": "dis bonjour en 2 mots",
-      "created_at": 1787006155.83287,
-      "updated_at": 1787006166.654302,
-      "message_count": 2,
-      "messages": [
-        {
-          "role": "user",
-          "text": "dis bonjour en 2 mots",
-          "ts": 1787006155.8328748,
-          "attachments": []
-        },
-        {
-          "role": "agent",
-          "text": "Bonjour piloubruce.\n\nsession_id: 20260818_003556_edb624",
-          "ts": 1787006166.6542988,
-          "error": null,
-          "attachments": []
-        }
-      ]
-    },
-    {
-      "id": "msg_1787006199853_fa64db73",
-      "agent": "manager",
-      "title": "reponds en 3 mots",
-      "created_at": 1787006200.2199023,
-      "updated_at": 1787006207.4479318,
-      "message_count": 2,
-      "messages": [
-        {
-          "role": "user",
-          "text": "reponds en 3 mots",
-          "ts": 1787006200.2199051,
-          "attachments": []
-        },
-        {
-          "role": "agent",
-          "text": "Ok, j'attends tes instructions.\n\nsession_id: 20260818_003640_1e036c",
-          "ts": 1787006207.447928,
-          "error": null,
-          "attachments": []
-        }
-      ]
-    },
-    {
-      "id": "msg_1787006249292_8fe955a1",
-      "agent": "manager",
-      "title": "reponds en 3 mots",
-      "created_at": 1787006249.652938,
-      "updated_at": 1787006260.0717347,
-      "message_count": 2,
-      "messages": [
-        {
-          "role": "user",
-          "text": "reponds en 3 mots",
-          "ts": 1787006249.6529408,
-          "attachments": []
-        },
-        {
-          "role": "agent",
-          "text": "Fais ta demande.\n\nsession_id: 20260818_003730_5f1d8b",
-          "ts": 1787006260.071732,
-          "error": null,
-          "attachments": []
-        }
-      ]
-    },
-    {
-      "id": "msg_1787006292661_e0213444",
-      "agent": "manager",
-      "title": "teste apres isolation",
-      "created_at": 1787006293.1743019,
-      "updated_at": 1787006431.8447893,
+      "title": "La je suis juste en train de tester le chat",
+      "created_at": 1787343529.664326,
+      "updated_at": 1787343568.8486576,
       "message_count": 4,
       "messages": [
         {
           "role": "user",
-          "text": "teste apres isolation",
-          "ts": 1787006293.1743052,
+          "text": "La je suis juste en train de tester le chat",
+          "ts": 1787343529.664329,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "↻ Resumed session 20260821_221806_9635ea \"Salut\" (1 user message, 2 total messages)\nCompris, t'es juste en test du chat. Tout répond normalement de mon côté — pas de délégation, pas de tâche en cours.\n\nDis-moi quand tu veux passer à un vrai besoin (brief, délégation agent, vérif infra, MC, etc.) et j'enclenche.\n\nsession_id: 20260821_221806_9635ea",
+          "ts": 1787343538.1013005,
+          "error": null,
+          "attachments": []
+        },
+        {
+          "role": "user",
+          "text": "Oui pour voir son comportement",
+          "ts": 1787343560.0061781,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "↻ Resumed session 20260821_221806_9635ea \"Salut\" (2 user messages, 4 total messages)\nParfait, comportement validé : réponses courts et directs, pas de narration inutile, pas de délégation fantôme tant que t'as rien demandé.\n\nLe chat se comporte comme attendu. Quand tu veux tester autre chose (délégation vers un agent, une commande MC, un check infra), tu me le dis et je le fais pour de vrai.\n\nsession_id: 20260821_221806_9635ea",
+          "ts": 1787343568.8486547,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787344190216_3e3a12d4",
+      "agent": "manager",
+      "title": "Salut je vais faire une série de tests donc réponds-moi just",
+      "created_at": 1787344190.592736,
+      "updated_at": 1787344199.825473,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Salut je vais faire une série de tests donc réponds-moi juste à chaque fois par exemple je vais bien",
+          "ts": 1787344190.5927384,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Salut ! Reçu, je te réponds court à chaque test. Vas-y.\n\nsession_id: 20260821_222952_fb6ec1",
+          "ts": 1787344199.825471,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "20260821_222952_fb6ec1",
+      "agent": "manager",
+      "title": "Donc là maintenant toujours sur le même chat c'est le deuxiè",
+      "created_at": 1787344216.5479896,
+      "updated_at": 1787344297.4098523,
+      "message_count": 8,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Donc là maintenant toujours sur le même chat c'est le deuxième test",
+          "ts": 1787344216.5479918,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "↻ Resumed session 20260821_222952_fb6ec1 \"Salut je vais faire une série de tests donc…\" (1 user message, 2 total messages)\nReçu, deuxième test noté. Je t'écoute pour la suite.\n\nsession_id: 20260821_222952_fb6ec1",
+          "ts": 1787344223.373454,
+          "error": null,
+          "attachments": []
+        },
+        {
+          "role": "user",
+          "text": "Bon là maintenant c'est pour faire le troisième test",
+          "ts": 1787344239.4458532,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "↻ Resumed session 20260821_222952_fb6ec1 \"Salut je vais faire une série de tests donc…\" (2 user messages, 4 total messages)\nReçu, troisième test noté. C'est parti pour la suite.\n\nsession_id: 20260821_222952_fb6ec1",
+          "ts": 1787344246.6835897,
+          "error": null,
+          "attachments": []
+        },
+        {
+          "role": "user",
+          "text": "Là j'envoie un petit message pour faire le 4e",
+          "ts": 1787344261.3812459,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "↻ Resumed session 20260821_222952_fb6ec1 \"Salut je vais faire une série de tests donc…\" (3 user messages, 6 total messages)\nReçu, quatrième test noté. Je suis là.\n\nsession_id: 20260821_222952_fb6ec1",
+          "ts": 1787344268.679605,
+          "error": null,
+          "attachments": []
+        },
+        {
+          "role": "user",
+          "text": "Et pour finir un dernier petit message pour faire le 5e",
+          "ts": 1787344287.3712754,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "↻ Resumed session 20260821_222952_fb6ec1 \"Salut je vais faire une série de tests donc…\" (4 user messages, 8 total messages)\nReçu, cinquième et dernier test noté. On a fait les 5, tout est passé. À ton dispo si tu as autre chose.\n\nsession_id: 20260821_222952_fb6ec1",
+          "ts": 1787344297.4098494,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787344670551_8d7255c8",
+      "agent": "manager",
+      "title": "Alors je voudrais faire une autre petite série de test tu as",
+      "created_at": 1787344670.9263222,
+      "updated_at": 1787344681.3504171,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Alors je voudrais faire une autre petite série de test tu as pas besoin de me répondre à ma question c'est juste du test donc réponds-moi n'importe quoi",
+          "ts": 1787344670.9263248,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "ok boom château pirate banane volante 42 🐸\n\nsession_id: 20260821_223751_b1795b",
+          "ts": 1787344681.3504155,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "20260821_223751_b1795b",
+      "agent": "manager",
+      "title": "Ok donc toujours la continuité de mon test ben je t'embrasse",
+      "created_at": 1787344699.5548275,
+      "updated_at": 1787344865.7362742,
+      "message_count": 6,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Ok donc toujours la continuité de mon test ben je t'embrasse ce message",
+          "ts": 1787344699.5548296,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "↻ Resumed session 20260821_223751_b1795b \"Alors je voudrais faire une autre petite série…\" (1 user message, 2 total messages)\n💋 bisous ! (réponds n'importe quoi comme demandé) 🦄🌮\n\nsession_id: 20260821_223751_b1795b",
+          "ts": 1787344706.770602,
+          "error": null,
+          "attachments": []
+        },
+        {
+          "role": "user",
+          "text": "Ok encore un petit message pour faire mon test",
+          "ts": 1787344833.7290125,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "↻ Resumed session 20260821_223751_b1795b \"Alors je voudrais faire une autre petite série…\" (2 user messages, 4 total messages)\npapillon holographic qui fait du skateboard sur la lune 🛹🌕✨\n\nsession_id: 20260821_223751_b1795b",
+          "ts": 1787344844.1823342,
+          "error": null,
+          "attachments": []
+        },
+        {
+          "role": "user",
+          "text": "Et un dernier petit message toujours pour faire mon test",
+          "ts": 1787344858.504557,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "↻ Resumed session 20260821_223751_b1795b \"Alors je voudrais faire une autre petite série…\" (3 user messages, 6 total messages)\ntrois chats en costume qui jouent de l'accordéon dans un train 🚂🐱🎶\n\nsession_id: 20260821_223751_b1795b",
+          "ts": 1787344865.7362726,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787344903036_8d1de93a",
+      "agent": "manager",
+      "title": "Toujours un petit message pour faire un test",
+      "created_at": 1787344903.424519,
+      "updated_at": 1787344914.2526357,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Toujours un petit message pour faire un test",
+          "ts": 1787344903.424521,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Test reçu et exécuté. Je tourne normalement sur la VM Debian .240, profil Manager par défaut. Tout est opérationnel de mon côté — prêt à prendre tes briefs et les déléguer aux agents de la flotte Hermes.\n\nDis-moi si tu veux faire un vrai test de quelque chose (délégation, dashboard, réseau, etc.) ou si c'était juste pour vérifier que je réponds.\n\nsession_id: 20260821_224144_842ebd",
+          "ts": 1787344914.2526343,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787375944108_c005fb24",
+      "agent": "manager",
+      "title": "Salut",
+      "created_at": 1787375944.5475514,
+      "updated_at": 1787375952.9776356,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Salut",
+          "ts": 1787375944.5475554,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Salut ! Je suis MANAGER, coordinateur de ta flotte Hermes. Prêt à bosser.\n\nTu veux quoi aujourd'hui ?\n\nsession_id: 20260822_071905_f6060b",
+          "ts": 1787375952.9776328,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787376834130_ea7ad090",
+      "agent": "manager",
+      "title": "Salut",
+      "created_at": 1787376835.03617,
+      "updated_at": 1787376847.9148328,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Salut",
+          "ts": 1787376835.0361764,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Salut piloubruce 👋\n\nJe suis MANAGER, en ligne sur la VM Debian .240. Dis-moi ce que tu veux faire aujourd'hui — tâche MC, délégation à un agent de la flotte, infra, ou autre.\n\nTu as été coupé ou tu veux juste dire bonjour ?\n\nsession_id: 20260822_073356_6bebc8",
+          "ts": 1787376847.9148288,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787376881377_fb42a4af",
+      "agent": "manager",
+      "title": "Salut",
+      "created_at": 1787376881.7437742,
+      "updated_at": 1787376889.7668905,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Salut",
+          "ts": 1787376881.743776,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Salut ! Je suis MANAGER, coordinateur de ta flotte Hermes. Je tourne sur la VM Debian .240.\n\nDis-moi ce que tu veux faire et je m'en occupe — je résume ta demande, je brief l'agent concerné ou j'exécute directement côté MC, puis je te confirme au passé composé avec la preuve.\n\nTu as quoi en cours ?\n\nsession_id: 20260822_073442_accccc",
+          "ts": 1787376889.7668874,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787377238446_24ae4f56",
+      "agent": "manager",
+      "title": "TEST_VERIF_SESSION_12345",
+      "created_at": 1787377238.8814275,
+      "updated_at": 1787377250.1079583,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "TEST_VERIF_SESSION_12345",
+          "ts": 1787377238.88143,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Commande reçue: TEST_VERIF_SESSION_12345\n\nJe ne dispose pas de contexte sur ce que cette chaîne déclenche — ce n'est pas une commande ou une tâche que je reconnais dans mon protocole habituel. Aucune action n'a été exécutée et aucun état n'a été modifié.\n\nSi tu voulais lancer un test de vérification de session, précise ce que tu veux vérifier exactement (ex: état du dashboard MC, agents en ligne, latence, config gateway). Je l'exécute et te confirmé au passé composé avec preuve.\n\nQue souhaites-tu que je fasse avec ce test ?\n\nsession_id: 20260822_074039_30feec",
+          "ts": 1787377250.1079564,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787378215486_2472e6c7",
+      "agent": "manager",
+      "title": "ping test fix",
+      "created_at": 1787378216.0315077,
+      "updated_at": 1787378246.9025939,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "ping test fix",
+          "ts": 1787378216.0315115,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Tout répond côté ICMP : VM .240 OK, GW .1 OK, internet (8.8.8.8) OK, provider .10 OK. Zéro perte.\n\nLe \"ping test\" passe. C'est quoi exactement le symptôme que tu voulais corriger ? Options :\n\n1. C'est un test de connectivité générique et tout est vert — rien à fixer.\n2. Tu parles du watchdog MC / port 5100 (server.py) qui ne répond pas.\n3. Tu parles de la box SFR (règle 80/443 -> .250, rien -> .240) qui bloque un service.\n4. Autre cible précise (nomme l'host/port/service).\n\nDis-moi la cible réelle et je corrige direct.\n\nsession_id: 20260822_075656_241408",
+          "ts": 1787378246.902592,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787378512528_c4f08354",
+      "agent": "manager",
+      "title": "Salut",
+      "created_at": 1787378512.898202,
+      "updated_at": 1787379160.1669917,
+      "message_count": 4,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Salut",
+          "ts": 1787378512.898205,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Salut piloubruce 👋\n\nJe suis MANAGER, en ligne sur la flotte Hermes. Qu'est-ce que je peux faire pour toi aujourd'hui ?\n\nDis-moi ta demande (tâche, bug, déploiement, recherche, etc.) et j'exécute.\n\nsession_id: 20260822_080154_06d2e2",
+          "ts": 1787378526.9844308,
+          "error": null,
+          "attachments": []
+        },
+        {
+          "role": "user",
+          "text": "Salut",
+          "ts": 1787379150.93452,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "↻ Resumed session 20260822_080154_06d2e2 \"Salut\" (1 user message, 2 total messages)\nSalut 👋\n\nTu répètes \"Salut\" — c'est un test ou t'as une demande concrète pour moi ?\n\nDonne-moi le brief (tâche, bug MC, déploiement, recherche, etc.) et je lance l'exécution.\n\nsession_id: 20260822_080154_06d2e2",
+          "ts": 1787379160.1669898,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "20260822_080154_06d2e2",
+      "agent": "manager",
+      "title": "Non pour l'instant c'est juste des messages de test rien de ",
+      "created_at": 1787379174.6316235,
+      "updated_at": 1787379182.2553182,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Non pour l'instant c'est juste des messages de test rien de plus",
+          "ts": 1787379174.631627,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "↻ Resumed session 20260822_080154_06d2e2 \"Salut\" (2 user messages, 4 total messages)\nCompris, pas de souci 👍\n\nJe reste en ligne. Quand t'auras une vraie demande (tâche, bug, déploiement, recherche...), tu me la donnes et j'exécute direct.\n\nÀ plus !\n\nsession_id: 20260822_080154_06d2e2",
+          "ts": 1787379182.2553163,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "20260821_001757_4a7d98",
+      "agent": "manager",
+      "title": "Là je t'envoie juste un message de test rien d'autre",
+      "created_at": 1787379205.9477592,
+      "updated_at": 1787379218.7894843,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Là je t'envoie juste un message de test rien d'autre",
+          "ts": 1787379205.9477632,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "↻ Resumed session 20260821_001757_4a7d98 \"Diagnostiquer modèles manquants profil défaut Omni-route\" (7 user messages, 180 total messages)\nReçu, message de test noté. Je reste en attente de ta prochaine instruction.\n\nsession_id: 20260821_001757_4a7d98",
+          "ts": 1787379218.7894826,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787379234310_9b94eabe",
+      "agent": "manager",
+      "title": "Là je t'ai juste un message de test rien d'autre",
+      "created_at": 1787379234.6923068,
+      "updated_at": 1787379244.3698041,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Là je t'ai juste un message de test rien d'autre",
+          "ts": 1787379234.692311,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Reçu, message de test noté. Je suis opérationnel et en attente de ta prochaine instruction réelle.\n\nsession_id: 20260822_081355_660844",
+          "ts": 1787379244.3698,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787379360219_c9fd8640",
+      "agent": "manager",
+      "title": "TEST_NOUVELLE_SESSION_XYZ",
+      "created_at": 1787379360.6861296,
+      "updated_at": 1787379370.7313747,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "TEST_NOUVELLE_SESSION_XYZ",
+          "ts": 1787379360.686132,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Je ne comprends pas cette entrée — `TEST_NOUVELLE_SESSION_XYZ` ne correspond à aucune commande ou tâche que je puisse exécuter.\n\nSi tu voulais tester le démarrage d'une nouvelle session, ça marche : je suis bien actif (profil default, MANAGER, sur la VM Debian .240).\n\nDis-moi ce que tu veux faire et je l'exécute directement. Quelques exemples selon le contexte :\n1. Tester un agent de la flotte (reseau, developpeur, recherche, etc.)\n2. Lancer une tâche sur le dashboard MC\n3. Vérifier l'état de l'infra (.240, .250, .253)\n4. Autre chose — précise ta demande\n\nQu'est-ce que tu attends de moi ?\n\nsession_id: 20260822_081602_f2eb07",
+          "ts": 1787379370.7313728,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787379831232_cd1e3597",
+      "agent": "manager",
+      "title": "Salut ceci est un test",
+      "created_at": 1787379831.70167,
+      "updated_at": 1787379842.182973,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Salut ceci est un test",
+          "ts": 1787379831.7016733,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Salut ! Test reçu, tout fonctionne de mon côté.\n\nJe suis MANAGER, coordinateur de la flotte Hermes. Tu peux me passer tes demandes normalement — je les exécute et te confirme au passé composé avec preuve.\n\nQuelque chose à tester en particulier, ou on passe à une vraie tâche ?\n\nsession_id: 20260822_082352_848152",
+          "ts": 1787379842.182968,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787379857822_50da4e78",
+      "agent": "manager",
+      "title": "Salut c'est encore un nouveau message de test",
+      "created_at": 1787379858.283613,
+      "updated_at": 1787379868.339412,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Salut c'est encore un nouveau message de test",
+          "ts": 1787379858.2836163,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Salut ! Reçu, message de test bien arrivé. Je suis MANAGER sur la flotte Hermes, opérationnel et prêt à exécuter.\n\nTu veux que je fasse quelque chose de précis avec ce test, ou c'était juste pour vérifier que je réponds bien ?\n\nsession_id: 20260822_082419_b8395e",
+          "ts": 1787379868.3394082,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787380146925_f8058f27",
+      "agent": "manager",
+      "title": "Bon c'est encore un nouveau test d'envoi de message rien de ",
+      "created_at": 1787380147.851512,
+      "updated_at": 1787380159.1811683,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Bon c'est encore un nouveau test d'envoi de message rien de spécial à la ferme de ton côté",
+          "ts": 1787380147.8515174,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Reçu, c'est noté. Rien à signaler de mon côté à la ferme — tout tourne normalement (VM .240, agents, MC). Message bien arrivé, aucune action requise.\n\nsession_id: 20260822_082909_b47542",
+          "ts": 1787380159.181164,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787380575454_b4a8833a",
+      "agent": "manager",
+      "title": "Salut",
+      "created_at": 1787380576.1227806,
+      "updated_at": 1787380587.802002,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Salut",
+          "ts": 1787380576.122784,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Salut piloubruce ! Je suis MANAGER, en ligne sur la flotte Hermes.\n\nQu'est-ce que je peux faire pour toi aujourd'hui ? (tâche MC, infra, délégation agent, recherche, ou autre)\n\nsession_id: 20260822_083617_f2707d",
+          "ts": 1787380587.8019984,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787380602043_d6d50ec4",
+      "agent": "manager",
+      "title": "C'est un message de test",
+      "created_at": 1787380602.5267422,
+      "updated_at": 1787380614.5643072,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "C'est un message de test",
+          "ts": 1787380602.5267458,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Message de test bien reçu. Je suis opérationnel sur la flotte Hermes (VM .240, profil Manager).\n\nDis-moi ce que tu veux faire et j'exécute.\n\nsession_id: 20260822_083643_912cf7",
+          "ts": 1787380614.5643053,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787386225534_caee0eb5",
+      "agent": "manager",
+      "title": "Ce message n'ai qu'un test",
+      "created_at": 1787386225.9072819,
+      "updated_at": 1787386233.9695764,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Ce message n'ai qu'un test",
+          "ts": 1787386225.9072852,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Reçu. Test constaté, aucune action requise. Prêt pour la suite.\n\nsession_id: 20260822_101026_70ecfd",
+          "ts": 1787386233.9695742,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "20260822_101026_70ecfd",
+      "agent": "manager",
+      "title": "Celui-là aussi n est qu'un test",
+      "created_at": 1787386272.5729475,
+      "updated_at": 1787386280.215173,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Celui-là aussi n est qu'un test",
+          "ts": 1787386272.5729508,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "↻ Resumed session 20260822_101026_70ecfd \"Ce message n'ai qu'un test\" (1 user message, 2 total messages)\nReçu. Test constaté, aucune action requise. En attente de ta prochaine instruction réelle.\n\nsession_id: 20260822_101026_70ecfd",
+          "ts": 1787386280.2151706,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787386326382_904f5041",
+      "agent": "manager",
+      "title": "Ceci est un message de test",
+      "created_at": 1787386326.3912504,
+      "updated_at": 1787386336.8423212,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Ceci est un message de test",
+          "ts": 1787386326.3912528,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Reçu. Message de test bien arrivé côté Manager (profil default, VM Debian .240).\n\nPrêt à prendre une vraie demande quand tu veux — je l'exécute et te confirme au passé composé avec preuve.\n\nsession_id: 20260822_101207_76d194",
+          "ts": 1787386336.8423193,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "20260822_101207_76d194",
+      "agent": "manager",
+      "title": "Ceci est un nouveau test pour voir si le bouton arrêté fonct",
+      "created_at": 1787388558.3912902,
+      "updated_at": 1787388586.7704077,
+      "message_count": 4,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Ceci est un nouveau test pour voir si le bouton arrêté fonctionne",
+          "ts": 1787388558.391292,
           "attachments": []
         },
         {
           "role": "agent",
           "text": "",
-          "ts": 1787006406.8793032,
+          "ts": 1787388559.20643,
           "error": "hermes chat a echoue (rc=-9)",
           "attachments": []
         },
         {
           "role": "user",
-          "text": "Réponds moi juste 2 mots",
-          "ts": 1787006417.3712795,
+          "text": "Ceci est un nouveau test pour voir si le bouton arrêter fonctionne",
+          "ts": 1787388582.70235,
           "attachments": []
         },
         {
           "role": "agent",
-          "text": "Test réussi.\n\nsession_id: 20260818_004018_266395",
-          "ts": 1787006431.8447871,
+          "text": "↻ Resumed session 20260822_101207_76d194 \"Ceci est un message de test\" (1 user message, 2 total messages)",
+          "ts": 1787388586.7704058,
+          "error": "hermes chat a echoue (rc=-9)",
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787429557097_ab3e12e1",
+      "agent": "manager",
+      "title": "salut",
+      "created_at": 1787429557.576942,
+      "updated_at": 1787429566.0277255,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "salut",
+          "ts": 1787429557.5769467,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Salut piloubruce ! Prêt à bosser. Tu veux quoi ?\n\nsession_id: 20260822_221238_d308be",
+          "ts": 1787429566.0277236,
           "error": null,
           "attachments": []
         }
       ]
     },
     {
-      "id": "msg_1787006344588_034bf0f8",
+      "id": "msg_1787430295601_fe5db3a8",
       "agent": "manager",
-      "title": "test isolation reponse en 2 mots",
-      "created_at": 1787006344.9678268,
-      "updated_at": 1787006355.7869587,
+      "title": "salut",
+      "created_at": 1787430296.017146,
+      "updated_at": 1787430306.4462993,
       "message_count": 2,
       "messages": [
         {
           "role": "user",
-          "text": "test isolation reponse en 2 mots",
-          "ts": 1787006344.9678302,
+          "text": "salut",
+          "ts": 1787430296.0171502,
           "attachments": []
         },
         {
           "role": "agent",
-          "text": "Test réussi.\n\nsession_id: 20260818_003905_80bb75",
-          "ts": 1787006355.7869558,
+          "text": "Salut piloubruce ! Je suis MANAGER, en ligne sur la flotte Hermes. Prêt à coordonner. Que veux-tu qu'on attaque ?\n\nsession_id: 20260822_222456_6a0315",
+          "ts": 1787430306.4462972,
           "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787430846886_9783d331",
+      "agent": "manager",
+      "title": "salut",
+      "created_at": 1787430847.2710116,
+      "updated_at": 1787430854.0922153,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "salut",
+          "ts": 1787430847.2710147,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Salut piloubruce. Prêt à bosser. Qu'est-ce que tu veux que je fasse ?\n\nsession_id: 20260822_223408_000cd1",
+          "ts": 1787430854.0922127,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787430906511_b037d5a5",
+      "agent": "manager",
+      "title": "salut",
+      "created_at": 1787430907.0224848,
+      "updated_at": 1787430915.8572745,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "salut",
+          "ts": 1787430907.022487,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Salut piloubruce 👋\n\nJe suis MANAGER, en ligne sur la flotte Hermes. Qu'est-ce que je peux faire pour toi aujourd'hui ?\n\n (tâche / question / délégation à un agent / infra / MC / autre)\n\nsession_id: 20260822_223508_0c3fff",
+          "ts": 1787430915.8572714,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787432266462_345cafd7",
+      "agent": "manager",
+      "title": "salut",
+      "created_at": 1787432266.8444853,
+      "updated_at": 1787432275.686763,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "salut",
+          "ts": 1787432266.8444881,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "Salut 👋\n\nJe suis MANAGER, coordinateur de la flotte Hermes. Je tourne sur la VM Debian 192.168.1.240.\n\nDis-moi ce que tu veux faire — tâche à déléguer, vérif infra, manip MC, ou autre. Je lance et je te confirme au passé composé avec preuve.\n\nsession_id: 20260822_225747_21c57a",
+          "ts": 1787432275.686761,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787560140105_c3ce388a",
+      "agent": "manager",
+      "title": "Est ce qu'il est possible dans le dashboard Hermès MC de cré",
+      "created_at": 1787560140.6410081,
+      "updated_at": 1787560172.7431498,
+      "message_count": 2,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Est ce qu'il est possible dans le dashboard Hermès MC de créer des widgets déplaçables où on veut, C'est à dire des Petite fenêtre flottante",
+          "ts": 1787560140.6410112,
+          "attachments": []
+        },
+        {
+          "role": "agent",
+          "text": "J'ai une réponse claire. Voici l'état des lieux réel du dashboard :\n\nRÉPONSE COURTE : Non, pas actuellement. Le dashboard MC est structuré en ONGLETS (sidebar + zone `main` unique), pas en widgets flottants. Il n'existe aucun système de fenêtres déplaçables/dockables. La seule chose « flottante » existante, c'est le bouton Live + le panneau `FleetLivePanel` en bas à gauche (`App.tsx:188-195`) — mais c'est codé en dur, pas un système de widgets.\n\nCE QUI EST POSSIBLE TECHNIQUEMENT (c'est du React 19 + Vite + Tailwind, pas de lib de drag installée) :\n1. Ajouter un système de widgets flottants (petites fenêtres draggables, redimensionnables, où on veut) — réutiliser un onglet existant (ex: Agents, Messages, FleetLive) dans une fenêtre détachée.\n2. Libs possibles : `@dnd-kit` (drag), `react-rnd` ou `react-grid-layout` (fenêtres flottantes redimensionnables), ou du drag maison en CSS `position: fixed` + pointer events.\n\nAVANT DE CODER, j'ai besoin de cadrer le besoin (pour ne pas faire une demi-feature que tu devras corriger) :\n\n1. Quel contenu veux-tu dans ces widgets flottants ?\n   - A) Un onglet entier détaché (ex: voir AGENTS pendant que tu es sur MESSAGES)\n   - B) Des cartes/mini-widgets perso (ex: compteur de tâches, état flotte, terminal mini)\n   - C) Les 2\n\n2. Comportement attendu ?\n   - A) Juste déplaçables à la souris (position libre, `fixed`)\n   - B) Déplaçables + redimensionnables\n   - C) Déplaçables + redimensionnables + persistance position (localStorage, survivre au F5) + bouton fermer/rouvrir\n\n3. Portée ?\n   - A) Widgets globaux (au-dessus de tous les onglets, comme le Live actuel)\n   - B) Widgets par onglet\n\nDis-moi tes réponses (1/2/3) et je brief le Developpeur pour implémenter directement — pas de plan, je fais la correction après.\n\nsession_id: 20260824_102901_c0ddbe",
+          "ts": 1787560172.7431476,
+          "error": null,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787726308397_f74074c5",
+      "agent": "manager",
+      "title": "Dis-moi j'ai un cron MC daily backup, qui est un simple cron",
+      "created_at": 1787726308.868495,
+      "updated_at": 1787726308.868501,
+      "message_count": 1,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Dis-moi j'ai un cron MC daily backup, qui est un simple cron pour faire un backup de mon dashboard Hermès mission contrôle et de garder dans mon répertoire seulement deux sauvegardes les plus récentes, pourquoi j'ai un agent qui vient faire ça et que ça met deux plombes, c'est quelque chose qui devrait pouvoir se faire logiquement sans agent",
+          "ts": 1787726308.8684995,
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "id": "msg_1787727023151_9c4b79b0",
+      "agent": "manager",
+      "title": "Je voudrais que tu pousses sur le github le dashboard Hermès",
+      "created_at": 1787727023.6231747,
+      "updated_at": 1787727023.623179,
+      "message_count": 1,
+      "messages": [
+        {
+          "role": "user",
+          "text": "Je voudrais que tu pousses sur le github le dashboard Hermès mission contrôle",
+          "ts": 1787727023.6231778,
           "attachments": []
         }
       ]

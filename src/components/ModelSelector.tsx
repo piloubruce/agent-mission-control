@@ -157,15 +157,18 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
   // Live model list for the currently-selected provider (from ?provider=X).
   const [live, setLive] = useState<ProviderModels | null>(null);
   const [liveBusy, setLiveBusy] = useState(false);
-  // Fallback manager (2026-08-03, MANAGER): défaut + 3 fallbacks de l'agent,
-  // réordonnables par drag & drop, avec cible d'application.
+  // Fallback manager (2026-08-03, MANAGER): défaut + N fallbacks de l'agent,
+  // réordonnables par flèches ↑↓, avec cible d'application.
+  const MAX_FB = 9; // défaut + 9 fallbacks (11 agents, diversification familles)
   const [fallbacks, setFallbacks] = useState<FallbackModel[]>([]);
-  const [applyTarget, setApplyTarget] = useState(0); // 0=default, 1..3=fallback i
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [dropIdx, setDropIdx] = useState<number | null>(null);
+  const [applyTarget, setApplyTarget] = useState(0); // 0=default, 1..MAX_FB=fallback i
   // Mémorise le provider du modèle sélectionné dans la liste (pour BUG A: utiliser ce provider
   // au lieu du filtre PROVIDER qui peut être "__all__" quand l'utilisateur filtre "Tous les providers")
   const [selectedModelProvider, setSelectedModelProvider] = useState<string | null>(null);
+  // Sélection visuelle dans la liste du haut (provider + id) — clic simple = sélectionne seulement,
+  // double-clic = assigne au slot cible (applyTarget). Permet de "Scanner" le modèle sélectionné
+  // sans l'assigner définitivement.
+  const [selectedModel, setSelectedModel] = useState<{ provider: string; id: string } | null>(null);
 
   // vMODE-AGENT-SCAN (2026-08-12) : scan depuis la modale.
   // `scanBusyKey` marque un modele (provider::model) en cours de scan.
@@ -258,7 +261,7 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
     const def = model;
     const targets: { prov: string; mdl: string }[] = [];
     if (def?.provider && def?.model) targets.push({ prov: normProv(def.provider), mdl: def.model });
-    for (const f of fallbacks.slice(0, 3)) {
+    for (const f of fallbacks.slice(0, MAX_FB)) {
       if (f.provider && f.model) targets.push({ prov: normProv(f.provider), mdl: f.model });
     }
     for (const t of targets) {
@@ -547,7 +550,7 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
       // La cible tgt reçoit le modèle sélectionné ; les autres positions
       // conservent leur modèle courant (ordre réordonné par drag & drop).
       const fbToSend: FallbackModel[] = [];
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < MAX_FB; i++) {
         const cur = fallbacks[i];
         if (tgt === i + 1) {
           fbToSend.push({ provider: effectiveProvider, model: selModel.trim() });
@@ -724,39 +727,53 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
                   <button
                     type="button"
                     onClick={() => {
-                      if (model?.provider && model?.model) scanOneModel(model.provider, model.model);
+                      // Priorité : selectedModel (sélection visuelle liste du haut) > model (surligné liste du bas)
+                      const toScan = selectedModel ?? (model?.provider && model?.model ? { provider: model.provider, id: model.model } : null);
+                      if (toScan) scanOneModel(toScan.provider, toScan.id);
                     }}
                     disabled={
                       busy ||
                       liveBusy ||
                       scanSeqBusy ||
-                      !model?.provider ||
-                      !model?.model ||
-                      scanBusyKey === `${model.provider}::${model.model}`
+                      !selectedModel && (!model?.provider || !model?.model) ||
+                      (selectedModel && scanBusyKey === `${selectedModel.provider}::${selectedModel.id}`) ||
+                      (!selectedModel && model?.provider && model?.model && scanBusyKey === `${model.provider}::${model.model}`)
                     }
                     title={
-                      model?.provider && model?.model
+                      selectedModel
+                        ? `Scanner le modele selectionne (${selectedModel.provider} / ${selectedModel.id})`
+                        : model?.provider && model?.model
                         ? `Scanner le modele surligne (${model.provider} / ${model.model})`
-                        : 'Selectionnez un modele'
+                        : 'Selectionnez un modele dans la liste'
                     }
                     className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
-                      model?.provider && model?.model
+                      selectedModel || (model?.provider && model?.model)
                         ? 'bg-orange-600 border-orange-700 text-white hover:bg-orange-500'
                         : 'bg-stone-950 border-stone-800 text-stone-600 cursor-not-allowed'
                     }`}
                   >
-                    {scanBusyKey === `${model?.provider}::${model?.model}` ? (
-                      <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                    ) : (
-                      <Zap className="w-3.5 h-3.5" />
-                    )}
+                    {(() => {
+                      const scanning = selectedModel
+                        ? scanBusyKey === `${selectedModel.provider}::${selectedModel.id}`
+                        : model?.provider && model?.model
+                        ? scanBusyKey === `${model.provider}::${model.model}`
+                        : false;
+                      return scanning ? (
+                        <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                      ) : (
+                        <Zap className="w-3.5 h-3.5" />
+                      );
+                    })()}
                     Scan
                   </button>
-                  {model?.provider && model?.model && (
-                    <span className="text-[10px] text-stone-500 whitespace-nowrap">
-                      Dernier scan : {fmtScan(scanIdx[scanKey(normProv(model.provider), model.model)]?.last_checked)}
-                    </span>
-                  )}
+                  {(() => {
+                    const scanned = selectedModel ?? (model?.provider && model?.model ? { provider: model.provider, id: model.model } : null);
+                    return scanned ? (
+                      <span className="text-[10px] text-stone-500 whitespace-nowrap">
+                        Dernier scan : {fmtScan(scanIdx[scanKey(normProv(scanned.provider), scanned.id)]?.last_checked)}
+                      </span>
+                    ) : null;
+                  })()}
                   <button
                     type="button"
                     onClick={() => setSortTps((v) => !v)}
@@ -784,6 +801,8 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
                 {filteredModels.map((m) => {
                   const mProvider = m.provider ?? provider;
                   const selected = model?.model === m.id && model?.provider === mProvider;
+                  // Sélection visuelle seule (highlight) : basée sur selectedModel (clic simple)
+                  const isVisuallySelected = selectedModel?.id === m.id && selectedModel?.provider === mProvider;
                   // Si ce modele (selectionne) est dans la blacklist, on le marque.
                   const blHere = selected && (blacklist[mProvider] || []).includes(m.id);
                   const fkey = favKey(mProvider, m.id);
@@ -793,11 +812,17 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
                       key={`${mProvider}::${m.id}`}
                       disabled={busy || liveBusy}
                       onClick={() => {
-                        // Fallback manager: le clic met a jour la LIGNE CIBLE
-                        // (radio: Defaut / Fallback 1/2/3) en memoire, sans
-                        // fermer. La sauvegarde disque ne se fait qu'au OK.
-                        // BUG A FIX: mémoriser le provider réel du modèle sélectionné
-                        // (pas celui du filtre qui peut être "__all__")
+                        // Clic simple : sélection visuelle seule (highlight orange), PAS d'assignation.
+                        // Mémorise le provider réel du modèle sélectionné (pour le scan et l'ID exact).
+                        const mProvider = m.provider ?? provider;
+                        const mdl = m.id;
+                        setSelectedModelProvider(mProvider);
+                        setSelectedModel({ provider: mProvider, id: mdl });
+                        setFreeformModel(mdl);
+                      }}
+                      onDoubleClick={() => {
+                        // Double-clic : assigne au slot cible (Default / Fallback 1-3).
+                        // Même logique que l'ancien onClick.
                         const mProvider = m.provider ?? provider;
                         const mdl = m.id;
                         setSelectedModelProvider(mProvider); // mémorise pour l'appel apply()
@@ -805,8 +830,8 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
                           setModel((prev) => ({ ...(prev || {}), provider: mProvider, model: mdl }));
                         } else {
                           setFallbacks((prev) => {
-                            const next = (prev || []).slice(0, 3);
-                            while (next.length < 3) next.push({ provider: '', model: '' });
+                            const next = (prev || []).slice(0, MAX_FB);
+                            while (next.length < MAX_FB) next.push({ provider: '', model: '' });
                             next[applyTarget - 1] = { provider: mProvider, model: mdl };
                             return next;
                           });
@@ -814,8 +839,10 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
                         setFreeformModel(mdl);
                       }}
                       className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between transition-colors ${
-                        selected
+                        isVisuallySelected
                           ? 'bg-orange-900/30 border border-orange-700/50 text-orange-200'
+                          : selected
+                          ? 'bg-stone-800/50 border border-stone-700/50 text-stone-300'
                           : 'hover:bg-stone-800 text-stone-300'
                       }`}
                     >
@@ -937,7 +964,7 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
                       mdl: def?.model || '',
                       idx: 0,
                     },
-                    ...fallbacks.slice(0, 3).map((f, i) => ({
+                    ...fallbacks.slice(0, MAX_FB).map((f, i) => ({
                       label: `Fallback ${i + 1}`,
                       prov: f.provider || '',
                       mdl: f.model || '',
@@ -954,7 +981,7 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
                       const promotedItem = fallbacks[from - 1];
                       if (!promotedItem) return;
                       // Build new fallbacks array: insert old default at position from-1
-                      const newFallbacks = [...fallbacks.slice(0, 3)];
+                      const newFallbacks = [...fallbacks.slice(0, MAX_FB)];
                       newFallbacks[from - 1] = { provider: defModel?.provider || '', model: defModel?.model || '' };
                       setFallbacks(newFallbacks);
                       // Set promoted item as new default
@@ -969,7 +996,7 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
                       setModel(fallbacks[to - 1]);
                     } else {
                       // Déplacement entre fallbacks: case existing
-                      const arr = fallbacks.slice(0, 3);
+                      const arr = fallbacks.slice(0, MAX_FB);
                       const [it] = arr.splice(from - 1, 1);
                       arr.splice(to - 1, 0, it);
                       setFallbacks(arr);
@@ -980,37 +1007,20 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
                       {rows.map((r) => (
                         <div
                           key={r.idx}
-                          draggable={r.idx > 0}
-                          onDragStart={() => setDragIdx(r.idx)}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            if (r.idx > 0) setDropIdx(r.idx);
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            if (dragIdx !== null && dropIdx !== null && dragIdx > 0 && dropIdx > 0) {
-                              move(dragIdx, dropIdx);
-                            }
-                            setDragIdx(null);
-                            setDropIdx(null);
-                          }}
-                          onDragEnd={() => {
-                            setDragIdx(null);
-                            setDropIdx(null);
-                          }}
-                          className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors ${
-                            dropIdx === r.idx
-                              ? 'border-orange-500 bg-orange-900/20'
-                              : r.idx === applyTarget
-                                ? 'border-orange-800/60 bg-orange-900/10'
-                                : 'border-stone-800 hover:bg-stone-800/40'
-                          } ${r.idx > 0 ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                          // Clic n'importe où sur la ligne = sélectionne cette cible (applyTarget)
+                          onClick={() => setApplyTarget(r.idx)}
+                          className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
+                            r.idx === applyTarget
+                              ? 'border-orange-800/60 bg-orange-900/10'
+                              : 'border-stone-800 hover:bg-stone-800/40'
+                          }`}
                         >
                           <input
                             type="radio"
                             name="applyTargetMs"
                             checked={applyTarget === r.idx}
                             onChange={() => setApplyTarget(r.idx)}
+                            onClick={(e) => e.stopPropagation()}
                             className="h-3.5 w-3.5 accent-orange-500"
                             title="Appliquer la selection du haut a cette position"
                           />
@@ -1080,7 +1090,7 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
                               <button
                                 type="button"
                                 title="Descendre"
-                                disabled={r.idx === 3 || busy}
+                                disabled={r.idx === MAX_FB || busy}
                                 onClick={() => move(r.idx, r.idx + 1)}
                                 className="px-1.5 text-stone-500 hover:text-stone-200 disabled:opacity-30"
                               >

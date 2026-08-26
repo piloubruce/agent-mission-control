@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Bell, X } from 'lucide-react';
 import type { Notification as ToastNotification } from './NotificationToast';
-import { getNotifications, addNotification, type Notification as ApiNotification } from '../../api';
+import { getNotifications, addNotification, clearNotifications, type Notification as ApiNotification } from '../../api';
 import { subscribeSse } from '../../lib/sse';
 
 interface NotificationContextValue {
@@ -88,10 +88,14 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const clear = (id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+    // Persiste l'effacement côté serveur (sinon réapparition au F5).
+    clearNotifications([id]).catch(() => {});
   };
 
   const clearAll = () => {
     setNotifications([]);
+    // ids=null => tout effacer côté serveur.
+    clearNotifications(null).catch(() => {});
   };
 
   const markRead = (id: string) => {
