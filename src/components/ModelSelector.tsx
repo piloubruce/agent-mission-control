@@ -354,13 +354,13 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
         }
         setScanProviders(next);
         // Providers VISIBLES = seulement ceux cochés (et avec au moins 1 modele).
-        const visibleProviders = Object.keys(cat.providers).filter(
-          (k) => !(cat.providers[k].count === 0) && next[k] === true,
+        const visibleProviders = Object.keys(cat.providers || {}).filter(
+          (k) => !(cat.providers?.[k]?.count === 0) && next[k] === true,
         );
         const firstProvider = visibleProviders[0] ?? '';
         // Keep the agent's current provider if present in the catalog AND visible (coché).
         const initProvider =
-          m?.provider && cat.providers[m.provider] && next[m.provider] === true
+          m?.provider && cat.providers?.[m.provider] && next[m.provider] === true
             ? m.provider
             : firstProvider;
         setProvider(initProvider);
@@ -649,7 +649,7 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
                     Permet d'afficher/choisir tous les modeles agreges des
                     providers cochés en Configuration (ALL_PROVIDERS). */}
                 <option value={ALL_PROVIDERS}>Tous les providers ({allModels.length} modèles)</option>
-                {Object.entries(catalog.providers)
+                {Object.entries(catalog?.providers || {})
                   .filter(([k, p]) =>
                     !(p.count === 0) &&                                    // masque TOUT provider sans modele dispo
                     !p.all_blacklisted &&                                  // masque si TOUT blackliste

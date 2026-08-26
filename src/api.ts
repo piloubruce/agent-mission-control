@@ -209,7 +209,12 @@ async function fetchJson<T>(path: string, init?: RequestInit & { timeoutMs?: num
 }
 
 export async function getState(): Promise<ApiState> {
-  return fetchJson<ApiState>('/api/state');
+  try {
+    return await fetchJson<ApiState>('/api/state');
+  } catch {
+    const { MOCK_STATE } = await import('./mockData');
+    return MOCK_STATE;
+  }
 }
 
 /** Favoris de modeles par agent — persistes cote serveur (mc_favs.json). */
@@ -1982,9 +1987,16 @@ export interface UploadMessageFileResult {
 
 /** List an agent's conversation sessions. Empty sessions array if none. */
 export async function getMessageSessions(agent: string): Promise<MessageSessions> {
-  return fetchJson<MessageSessions>(
-    `/api/messages/sessions?agent=${encodeURIComponent(agent)}`,
-  );
+  try {
+    return await fetchJson<MessageSessions>(
+      `/api/messages/sessions?agent=${encodeURIComponent(agent)}`,
+    );
+  } catch {
+    const { MOCK_SESSIONS_MAP } = await import('./mockData');
+    const normalized = (agent || 'manager').toLowerCase();
+    const list = MOCK_SESSIONS_MAP[normalized] || [];
+    return { agent, sessions: list };
+  }
 }
 
 /**

@@ -95,19 +95,19 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange, liveOpen
 
   return (
     <>
-    {/* Bouton hamburger flottant (mobile/tablette uniquement) : ouvre la barre d'onglets. */}
+    {/* Bouton hamburger flottant (mobile/tablette portrait uniquement) : ouvre la barre d'onglets. */}
     <button
       onClick={() => setNavOpen(true)}
       title="Onglets"
-      className="md:hidden fixed top-3 left-3 z-50 flex items-center justify-center w-11 h-11 rounded-full bg-stone-800 text-stone-200 border border-stone-700 shadow-lg active:bg-stone-700"
+      className="lg:hidden fixed top-3 left-3 z-50 flex items-center justify-center w-11 h-11 rounded-full bg-stone-800 text-stone-200 border border-stone-700 shadow-lg active:bg-stone-700 hover:bg-stone-750"
     >
       <Menu className="w-5 h-5" />
     </button>
 
-    {/* Voile derrière la barre ouverte (mobile) */}
+    {/* Voile derrière la barre ouverte (mobile / tablette portrait) */}
     {navOpen && (
       <div
-        className="md:hidden fixed inset-0 z-40 bg-black/60"
+        className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
         onClick={() => setNavOpen(false)}
       />
     )}
@@ -115,17 +115,17 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange, liveOpen
     <nav
       className={`
         flex flex-row flex-wrap w-full h-auto items-center gap-2 px-3 py-2
-        md:flex-col md:flex-nowrap md:items-stretch md:h-screen md:h-[100dvh] md:max-h-[100dvh] md:p-0 md:gap-0 md:overflow-hidden
-        md:sticky md:top-0 z-50
-        border-b md:border-b-0 md:border-r border-stone-800
+        lg:flex-col lg:flex-nowrap lg:items-stretch lg:h-screen lg:h-[100dvh] lg:max-h-[100dvh] lg:p-0 lg:gap-0 lg:overflow-hidden
+        lg:sticky lg:top-0 z-50
+        border-b lg:border-b-0 lg:border-r border-stone-800
         bg-stone-950/80 backdrop-blur-md
-        ${collapsed ? 'md:w-20 md:overflow-x-hidden' : 'md:w-56'}
-        max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:w-64 max-md:max-w-[80vw] max-md:z-50 max-md:flex-col max-md:flex-nowrap max-md:overflow-y-auto max-md:shadow-2xl max-md:transform max-md:transition-transform max-md:duration-200 max-md:ease-out
-        ${navOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'}
+        ${collapsed ? 'lg:w-20 lg:overflow-x-hidden' : 'lg:w-56'}
+        max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:w-64 max-lg:max-w-[80vw] max-lg:z-50 max-lg:flex-col max-lg:flex-nowrap max-lg:overflow-y-auto max-lg:shadow-2xl max-lg:transform max-lg:transition-transform max-lg:duration-200 max-lg:ease-out
+        ${navOpen ? 'max-lg:translate-x-0' : 'max-lg:-translate-x-full'}
       `}
     >
       {/* Logo + bouton de rétractation (colonne à gauche, toujours) + titre à droite */}
-      <div className="flex items-stretch md:px-4 md:py-4 md:border-b md:border-stone-800 gap-3 shrink-0">
+      <div className="flex items-stretch lg:px-4 lg:py-4 lg:border-b lg:border-stone-800 gap-3 shrink-0">
         {/* Colonne : H + bouton rétractation (empilés, jamais décalés) */}
         <div className="flex flex-col items-center gap-3 shrink-0">
           <div className="w-8 h-8 bg-orange-600 rounded flex items-center justify-center text-white font-bold tracking-tighter shrink-0">
@@ -150,7 +150,7 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange, liveOpen
         {/* Titre + version (à droite du H, masqué en rétracté) */}
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <span className="text-sm md:text-base font-medium tracking-tight text-stone-100">
+            <span className="text-sm lg:text-base font-medium tracking-tight text-stone-100">
               Hermès Mission Control
             </span>
             <span className="px-2 py-0.5 text-[10px] font-mono text-orange-500 bg-orange-500/10 rounded-full border border-orange-500/20 shrink-0">
@@ -160,7 +160,7 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange, liveOpen
         )}
       </div>
       {/* Onglets */}
-      <div className={`mc-sidebar-scroll flex flex-row flex-wrap md:flex-col md:flex-nowrap md:flex-1 md:min-h-0 md:basis-0 gap-1 md:p-3 md:overflow-y-auto md:overflow-x-hidden ${collapsed ? 'md:items-center' : ''}`}>
+      <div className={`mc-sidebar-scroll flex flex-row flex-wrap lg:flex-col lg:flex-nowrap lg:flex-1 lg:min-h-0 lg:basis-0 gap-1 lg:p-3 lg:overflow-y-auto lg:overflow-x-hidden ${collapsed ? 'lg:items-center' : ''}`}>
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -168,9 +168,12 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange, liveOpen
           return (
             <button
               key={tab.id}
-              onClick={() => onTabChange(tab.id)}
+              onClick={() => {
+                onTabChange(tab.id);
+                setNavOpen(false);
+              }}
               title={shortcut ? `${tab.label} (${shortcut})` : tab.label}
-              className={`flex items-center gap-3 px-3 py-2.5 text-xs font-medium tracking-widest rounded-md transition-all duration-200 shrink-0 text-left ${collapsed ? 'md:justify-center md:w-auto md:flex-col md:gap-1 md:py-1.5' : 'md:w-full'} ${active
+              className={`flex items-center gap-3 px-3 py-2.5 text-xs font-medium tracking-widest rounded-md transition-all duration-200 shrink-0 text-left ${collapsed ? 'lg:justify-center lg:w-auto lg:flex-col lg:gap-1 lg:py-1.5' : 'lg:w-full'} ${active
                 ? 'text-orange-500 bg-stone-900'
                 : 'text-stone-400 hover:text-stone-200 hover:bg-stone-900/50'}`}
             >
@@ -184,14 +187,14 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange, liveOpen
                 </>
               )}
               {collapsed && shortcut && (
-                <span className="hidden md:block text-[8px] font-mono tracking-normal text-stone-600 shrink-0">{shortcut}</span>
+                <span className="hidden lg:block text-[8px] font-mono tracking-normal text-stone-600 shrink-0">{shortcut}</span>
               )}
             </button>
           );
         })}
       </div>
       {/* Actions (bas) */}
-      <div className={`shrink-0 flex flex-row md:flex-col items-center md:items-stretch gap-1 md:gap-1 md:p-3 md:border-t md:border-stone-800 ${collapsed ? 'md:items-center' : ''}`}>
+      <div className={`shrink-0 flex flex-row lg:flex-col items-center lg:items-stretch gap-1 lg:gap-1 lg:p-3 lg:border-t lg:border-stone-800 ${collapsed ? 'lg:items-center' : ''}`}>
         {/* Statut Backend Hermès */}
         <div
           title={isServerOnline ? 'Hermès Mission Control : En ligne' : 'Hermès Mission Control : Déconnecté'}
@@ -210,17 +213,17 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange, liveOpen
           <Server className="w-3.5 h-3.5 opacity-70 shrink-0" />
         </div>
 
-        <div className={`hidden md:flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono tracking-widest text-stone-500 ${collapsed ? 'md:justify-center' : ''}`}>
+        <div className={`hidden lg:flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono tracking-widest text-stone-500 ${collapsed ? 'lg:justify-center' : ''}`}>
           <span className={`w-2 h-2 rounded-full ${fleetDot}`} />
           {!collapsed && <>FLOTTE · {fleetLabel}</>}
         </div>
         <button onClick={handleRestart} title="Redemarrer le serveur" className={actionBtn}>
           <RotateCw className="w-5 h-5 shrink-0" />
-          {!collapsed && <span className="hidden md:inline">Redemarrer</span>}
+          {!collapsed && <span className="hidden lg:inline">Redemarrer</span>}
         </button>
         <button onClick={() => setLiveOpen((v) => !v)} title="Supervision temps réel" className={actionBtn}>
           <Activity className="w-5 h-5 shrink-0" />
-          {!collapsed && <span className="hidden md:inline">Live</span>}
+          {!collapsed && <span className="hidden lg:inline">Live</span>}
         </button>
       </div>
     </nav>

@@ -438,7 +438,7 @@ export const MultiAgentModelModal: React.FC<Props> = ({ open, onClose }) => {
                   Permet d'afficher/choisir tous les modeles agreges des
                   providers cochés en Configuration (ALL_PROVIDERS). */}
               <option value={ALL_PROVIDERS}>Tous les providers ({allModels.length} modèles)</option>
-               {Object.entries(catalog.providers)
+               {Object.entries(catalog?.providers || {})
                  .filter(([k, p]) =>
                    !(p.count === 0) &&                                    // masque TOUT provider sans modele dispo
                    !p.all_blacklisted &&                                  // masque si TOUT blackliste

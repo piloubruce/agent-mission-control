@@ -415,21 +415,24 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
   // Ref sur la zone de chat principale pour fermer l'historique au clic dedans.
   const chatAreaRef = useRef<HTMLDivElement | null>(null);
 
-  // --- MOBILE / TABLETTE (écran < 768px = breakpoint `md` de Tailwind) ---
+  // --- MOBILE / TABLETTE PORTRAIT (écran < 1024px ou format portrait) ---
   // Sur ces appareils, les colonnes latérales (Agents à gauche, Historique à
   // droite) deviennent des panneaux coulissants masqués par défaut, ouverts
-  // par glissement tactile :
-  //   * Agents   -> glisser doigt sur la MOITIÉ INFÉRIEURE gauche  (vers la droite)
-  //   * Historique -> glisser doigt sur la moitié droite            (vers la gauche)
-  // Sur desktop (>= md) tout reste tel quel (colonnes visibles + redimensionnables).
+  // par glissement tactile ou via les boutons flottants dédiés :
+  //   * Barre des onglets -> bouton flottant en haut à gauche
+  //   * Agents            -> bouton flottant en bas à gauche
+  //   * Historique        -> bouton flottant en bas à droite
+  // Sur desktop paysage (>= lg) tout reste tel quel (colonnes visibles + redimensionnables).
   const [isMobile, setIsMobile] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false,
+    typeof window !== 'undefined'
+      ? window.matchMedia('(max-width: 1023px), (orientation: portrait) and (max-width: 1200px)').matches
+      : false,
   );
   const [agentsOpen, setAgentsOpen] = useState<boolean>(false);
   const [historyOpen, setHistoryOpen] = useState<boolean>(false);
 
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 767px)');
+    const mq = window.matchMedia('(max-width: 1023px), (orientation: portrait) and (max-width: 1200px)');
     const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
     if (mq.addEventListener) mq.addEventListener('change', onChange);
     else mq.addListener(onChange);
@@ -977,6 +980,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
   const openSession = (id: string) => {
     setCurrentSessionId(id);
     setSelected(new Set());
+    if (isMobile) setHistoryOpen(false);
     // Reprend le stream si la session ouverte est encore en cours.
     const sess = sessions.find((s) => s.id === id);
     if (sess?.live?.running) startStreaming(activeAgent, id);
@@ -1462,9 +1466,29 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
     return { contextUsedPct: pct, contextTokens: tokens };
   }, [openSessionObj, contextMaxTokens, liveRunning, liveStatus]);
 
+  // Quand on change de session, réinitialise la position et scrolle tout en bas
+  useEffect(() => {
+    setUserScrolledUp(false);
+    const scrollDown = () => {
+      const el = convScrollRef.current;
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+      }
+    };
+    scrollDown();
+    const t1 = setTimeout(scrollDown, 50);
+    const t2 = setTimeout(scrollDown, 150);
+    const t3 = setTimeout(scrollDown, 350);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [currentSessionId]);
+
   return (
     <div
-      className="w-full max-md:h-[100dvh] md:h-full overflow-hidden flex flex-col max-md:pt-14"
+      className="w-full h-full max-h-[100dvh] overflow-hidden flex flex-col"
       onTouchStart={isMobile ? onTouchStart : undefined}
       onTouchEnd={isMobile ? onTouchEnd : undefined}
     >
@@ -1478,81 +1502,117 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
         {/* Sur mobile/tablette : voile derrière le panneau ouvert (ferme au clic). */}
         {isMobile && (agentsOpen || historyOpen) && (
           <div
-            className="absolute inset-0 z-20 bg-black/60 md:hidden"
+            className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm"
             onClick={() => { setAgentsOpen(false); setHistoryOpen(false); }}
           />
         )}
         {/* ============ COLONNE GAUCHE : AGENTS ============ */}
-        {/* Desktop (>= md) : colonne fixe redimensionnable. Mobile (< md) :
+        {/* Desktop (>= lg) : colonne fixe redimensionnable. Mobile / Tablette portrait (< lg) :
             panneau coulissant masqué par défaut, ouvert par glisser la moitié
-            INFÉRIEURE gauche vers la droite. Bouton flottant pour (ré)ouvrir /
-            fermer. Clic sur un agent -> sélection + fermeture du panneau. */}
-        <div
-          style={isMobile ? undefined : { width: `${agentsWidth}px` }}
-          className={`relative shrink-0 flex flex-col min-h-0 border-r border-stone-800 bg-stone-900/40 overflow-y-auto
-            ${isMobile ? 'fixed left-0 top-0 bottom-0 z-30 w-1/2 max-w-[50vw] box-border overflow-x-hidden transform transition-transform duration-200 ease-out shadow-2xl' : ''}
-            ${isMobile && !agentsOpen ? '-translate-x-full' : ''}`}
-        >
-          <div className="px-3 py-2 flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-stone-500 border-b border-stone-800 sticky top-0 bg-stone-900/90 backdrop-blur">
-            <span>Agents</span>
-            {isMobile && (
+            INFÉRIEURE gauche vers la droite ou via le bouton flottant en bas à gauche. */}
+        {isMobile ? (
+          <div
+            className={`fixed inset-y-0 left-0 z-40 w-72 max-w-[80vw] flex flex-col bg-stone-900/95 border-r border-stone-800 shadow-2xl backdrop-blur-md overflow-y-auto overflow-x-hidden transform transition-transform duration-200 ease-out ${
+              agentsOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
+            }`}
+          >
+            <div className="px-3 py-2 flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-stone-500 border-b border-stone-800 sticky top-0 bg-stone-900/90 backdrop-blur">
+              <span>Agents</span>
               <button
                 onClick={() => setAgentsOpen(false)}
-                className="text-stone-400 hover:text-stone-100"
+                className="text-stone-400 hover:text-stone-100 p-1"
                 title="Fermer"
               >
                 ✕
               </button>
+            </div>
+            {agents.length === 0 && (
+              <div className="px-3 py-3 text-xs text-stone-500 font-mono">chargement…</div>
             )}
+            {agents.map((a) => {
+              const isActive = a.agent === activeAgent;
+              const isBusy = busyAgents.has(a.agent) || workingAgents.includes(a.agent);
+              const status = agentStatusFromStrings(isBusy, waitingAgents.includes(a.agent));
+              const statusClasses = agentStatusClasses(status);
+              return (
+                <button
+                  key={a.agent}
+                  onClick={() => { handleAgentClick(a.agent); setAgentsOpen(false); }}
+                  title={a.name}
+                  className={`flex items-center gap-2 px-3 py-2.5 text-left font-mono text-[13px] border-l-2 transition-colors ${
+                    isActive
+                      ? 'border-orange-500 bg-orange-600/15 text-orange-300'
+                      : 'border-transparent text-stone-400 hover:text-stone-100 hover:bg-stone-800/60'
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${statusClasses.dot}`}
+                    title={statusClasses.label}
+                  />
+                  <span className="truncate">{a.agent}</span>
+                </button>
+              );
+            })}
           </div>
-          {agents.length === 0 && (
-            <div className="px-3 py-3 text-xs text-stone-500 font-mono">chargement…</div>
-          )}
-          {agents.map((a) => {
-            const isActive = a.agent === activeAgent;
-            const isBusy = busyAgents.has(a.agent) || workingAgents.includes(a.agent);
-            const status = agentStatusFromStrings(isBusy, waitingAgents.includes(a.agent));
-            const statusClasses = agentStatusClasses(status);
-            return (
-              <button
-                key={a.agent}
-                onClick={() => { handleAgentClick(a.agent); if (isMobile) setAgentsOpen(false); }}
-                title={a.name}
-                className={`flex items-center gap-2 px-3 py-2 text-left font-mono text-[13px] border-l-2 transition-colors ${
-                  isActive
-                    ? 'border-orange-500 bg-orange-600/15 text-orange-300'
-                    : 'border-transparent text-stone-400 hover:text-stone-100 hover:bg-stone-800/60'
-                }`}
-              >
-                <span
-                  className={`w-2 h-2 rounded-full shrink-0 ${statusClasses.dot}`}
-                  title={statusClasses.label}
-                />
-                <span className="truncate">{a.agent}</span>
-              </button>
-            );
-          })}
-        </div>
+        ) : (
+          <div
+            style={{ width: `${agentsWidth}px` }}
+            className="relative shrink-0 flex flex-col min-h-0 border-r border-stone-800 bg-stone-900/40 overflow-y-auto"
+          >
+            <div className="px-3 py-2 flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-stone-500 border-b border-stone-800 sticky top-0 bg-stone-900/90 backdrop-blur">
+              <span>Agents</span>
+            </div>
+            {agents.length === 0 && (
+              <div className="px-3 py-3 text-xs text-stone-500 font-mono">chargement…</div>
+            )}
+            {agents.map((a) => {
+              const isActive = a.agent === activeAgent;
+              const isBusy = busyAgents.has(a.agent) || workingAgents.includes(a.agent);
+              const status = agentStatusFromStrings(isBusy, waitingAgents.includes(a.agent));
+              const statusClasses = agentStatusClasses(status);
+              return (
+                <button
+                  key={a.agent}
+                  onClick={() => handleAgentClick(a.agent)}
+                  title={a.name}
+                  className={`flex items-center gap-2 px-3 py-2 text-left font-mono text-[13px] border-l-2 transition-colors ${
+                    isActive
+                      ? 'border-orange-500 bg-orange-600/15 text-orange-300'
+                      : 'border-transparent text-stone-400 hover:text-stone-100 hover:bg-stone-800/60'
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${statusClasses.dot}`}
+                    title={statusClasses.label}
+                  />
+                  <span className="truncate">{a.agent}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        {/* Bouton flottant ouverture Agents (mobile/tablette uniquement) */}
+        {/* Bouton flottant ouverture Agents (mobile/tablette portrait uniquement) */}
         {isMobile && !agentsOpen && (
           <button
             onClick={() => setAgentsOpen(true)}
-            title="Agents (glisser la moitié bas-gauche)"
-            className="md:hidden fixed left-2 bottom-24 z-40 flex items-center justify-center w-11 h-11 rounded-full bg-stone-800 text-stone-300 border border-stone-700 shadow-lg active:bg-stone-700"
+            title="Agents"
+            className="fixed left-3 bottom-20 z-40 flex items-center justify-center w-11 h-11 rounded-full bg-stone-800 text-stone-300 border border-stone-700 shadow-lg active:bg-stone-700 hover:bg-stone-750"
           >
             <Menu className="w-5 h-5" />
           </button>
         )}
 
         {/* Poignée de redimensionnement pour la colonne Agents */}
-        <div
-          onMouseDown={startResizeAgents}
-          className="w-1.5 shrink-0 cursor-col-resize hover:bg-orange-500/50 active:bg-orange-500 transition-colors z-10 -ml-1 flex items-center justify-center group select-none"
-          title="Glisser pour redimensionner la colonne Agents"
-        >
-          <div className="w-0.5 h-6 bg-stone-700 group-hover:bg-orange-400 rounded" />
-        </div>
+        {!isMobile && (
+          <div
+            onMouseDown={startResizeAgents}
+            className="w-1.5 shrink-0 cursor-col-resize hover:bg-orange-500/50 active:bg-orange-500 transition-colors z-10 -ml-1 flex items-center justify-center group select-none"
+            title="Glisser pour redimensionner la colonne Agents"
+          >
+            <div className="w-0.5 h-6 bg-stone-700 group-hover:bg-orange-400 rounded" />
+          </div>
+        )}
 
         {/* ============ CENTRE : TERMINAL CLI ============ */}
         <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-stone-950">
@@ -1564,7 +1624,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
               pour que cet en-tete garde TOUJOURS 1 ligne de meme hauteur que
               l'en-tete "Historique" de droite (sinon en flex-wrap il passait
               en 2 lignes sur ecran etroit -> bandeaux desalignes). */}
-          <div className="shrink-0 flex flex-col gap-y-1 px-3 py-2 border-b border-stone-800 bg-stone-900/70 font-mono text-xs min-h-[2.75rem] md:flex-row md:items-center md:gap-x-3 md:whitespace-nowrap md:overflow-x-hidden">
+          <div className={`shrink-0 flex flex-col gap-y-1 px-3 py-2 border-b border-stone-800 bg-stone-900/70 font-mono text-xs min-h-[2.75rem] lg:flex-row lg:items-center lg:gap-x-3 lg:whitespace-nowrap lg:overflow-x-hidden ${isMobile ? 'pl-16' : ''}`}>
             {/* Ligne 1 (mobile) / début de ligne (desktop) : prompt agent */}
             <div className="flex items-center gap-x-3">
               <span className="flex gap-1.5 mr-1">
@@ -1697,7 +1757,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                   const isUser = m.role === 'user';
                   const isLastAgent = !isUser && !displayMessages.slice(i + 1).some((x: any) => x.role === 'agent');
                   const ts = m.ts
-                    ? new Date(m.ts * 1000).toLocaleString('fr-FR', {
+                    ? new Date(m.ts > 1e11 ? m.ts : m.ts * 1000).toLocaleString('fr-FR', {
                         day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
                       })
                     : '';
@@ -1773,20 +1833,19 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                 {/* Boutons de navigation verticale : apparaissent des qu'un
                     ascenseur est present (scrollHeight > clientHeight), meme hors
                     generation. « ↓ bas » quand on n'est pas en bas, « ↑ haut »
-                    quand on n'est pas en haut. Pendant une generation le bouton
-                    « ↓ bas » reste prioritaire (auto-scroll). */}
+                    quand on n'est pas en haut. Bouton compact et discret collé à droite. */}
                 {(() => {
                   const el = convScrollRef.current;
                   const hasScroll = el ? el.scrollHeight - el.clientHeight > BOTTOM_THRESHOLD : false;
                   if (!hasScroll) return null;
                   return (
-                    <div className="sticky bottom-2 flex justify-end gap-2 mr-3 mb-2 max-md:fixed max-md:bottom-20 max-md:right-3 max-md:mr-0 max-md:z-30 max-md:flex-col">
+                    <div className="pointer-events-none sticky bottom-3 right-3 flex justify-end items-center gap-2 mr-2 mb-2 z-20">
                       {!atTop && (
                         <button
                           type="button"
                           onClick={scrollToTop}
                           title="Aller en haut de la discussion"
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-stone-700 text-white text-xs font-medium shadow-lg hover:bg-stone-600 transition-colors"
+                          className="pointer-events-auto shrink-0 w-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-800/90 text-stone-200 border border-stone-700 text-xs font-mono shadow-md hover:bg-stone-700 hover:text-white transition-colors backdrop-blur-sm active:scale-95"
                         >
                           ↑ haut
                         </button>
@@ -1796,7 +1855,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                           type="button"
                           onClick={scrollToBottom}
                           title="Aller en bas de la discussion"
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-orange-600 text-white text-xs font-medium shadow-lg hover:bg-orange-500 transition-colors"
+                          className="pointer-events-auto shrink-0 w-auto flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-orange-600/95 text-white border border-orange-500/50 text-xs font-mono shadow-lg hover:bg-orange-500 transition-colors backdrop-blur-sm active:scale-95"
                         >
                           ↓ bas
                         </button>
@@ -1829,22 +1888,17 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
             </div>
           )}
 
-          {/* Ligne de saisie style prompt.
-              Desktop (>= md) : une seule rangée (› + paperclip + textarea + annuler + envoyer).
-              Mobile (< md) : deux rangées -> rangée 1 (› + paperclip), rangée 2
-              (textarea pleine largeur + annuler + envoyer) pour que la zone de
-              texte soit confortable au doigt. */}
+          {/* Ligne de saisie style prompt (pleine largeur sur desktop et tablette) */}
           <div
-            className="shrink-0 flex md:items-end flex-col md:flex-row gap-2 px-3 py-2 border-t border-stone-800 bg-stone-900/60"
+            className="shrink-0 flex items-end gap-2 px-3 py-2 border-t border-stone-800 bg-stone-900/60 w-full"
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
               if (e.dataTransfer.files?.length) uploadFiles(e.dataTransfer.files);
             }}
           >
-            {/* Rangée 1 : prompt + paperclip (toujours visibles, au-dessus sur mobile) */}
-            <div className="flex items-center gap-2 w-full md:w-auto">
-              <span className="text-orange-400 font-mono text-sm select-none">›</span>
+            <div className="flex items-center gap-1.5 shrink-0 pb-1">
+              <span className="text-orange-400 font-mono text-base select-none">›</span>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1858,22 +1912,21 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
               <button
                 onClick={() => fileInputRef.current?.click()}
                 title="Joindre un fichier"
-                className="shrink-0 p-2 rounded text-stone-500 hover:text-stone-200 hover:bg-stone-800 transition-colors"
+                className="shrink-0 p-2 rounded text-stone-400 hover:text-stone-100 hover:bg-stone-800 transition-colors"
               >
                 <Paperclip className="w-4 h-4" />
               </button>
             </div>
-            {/* Rangée 2 : textarea + boutons (pleine largeur sur mobile) */}
-            <div className="flex items-end gap-2 w-full md:flex-1">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-                rows={2}
-                placeholder="message… (CTRL+Entree = envoyer)"
-                className="flex-1 resize-y bg-stone-950 border border-stone-800 rounded px-2 py-1.5 text-stone-200 text-sm font-mono focus:outline-none focus:border-orange-600"
-              />
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              rows={2}
+              placeholder="message… (CTRL+Entree = envoyer)"
+              className="flex-1 min-w-0 resize-y bg-stone-950 border border-stone-800 rounded px-2.5 py-1.5 text-stone-200 text-sm font-mono focus:outline-none focus:border-orange-600 focus:ring-1 focus:ring-orange-600"
+            />
+            <div className="flex items-center gap-1.5 shrink-0 pb-0.5">
               <button
                 onClick={handleCancel}
                 disabled={!liveRunning || cancelling}
@@ -1889,196 +1942,330 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
               <button
                 onClick={handleSend}
                 disabled={sending || (!input.trim() && attachments.length === 0)}
-                className={`shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 rounded text-xs font-mono transition-colors ${
+                className={`shrink-0 flex items-center justify-center gap-1.5 px-3.5 py-2 rounded text-xs font-mono transition-colors ${
                   sending || (!input.trim() && attachments.length === 0)
                     ? 'bg-stone-800 text-stone-600 cursor-not-allowed'
-                    : 'bg-orange-600 text-white hover:bg-orange-500'
+                    : 'bg-orange-600 text-white hover:bg-orange-500 shadow-sm'
                 }`}
               >
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                envoyer
+                <span className="hidden sm:inline">envoyer</span>
               </button>
             </div>
           </div>
         </div>
 
         {/* Poignée de redimensionnement pour la colonne Historique */}
-        {showHistory && (
-        <div
-          onMouseDown={startResizeHistory}
-          className="w-1.5 shrink-0 cursor-col-resize hover:bg-orange-500/50 active:bg-orange-500 transition-colors z-10 -mr-1 flex items-center justify-center group select-none"
-          title="Glisser pour redimensionner la colonne Historique"
-        >
-          <div className="w-0.5 h-6 bg-stone-700 group-hover:bg-orange-400 rounded" />
-        </div>
+        {!isMobile && showHistory && (
+          <div
+            onMouseDown={startResizeHistory}
+            className="w-1.5 shrink-0 cursor-col-resize hover:bg-orange-500/50 active:bg-orange-500 transition-colors z-10 -mr-1 flex items-center justify-center group select-none"
+            title="Glisser pour redimensionner la colonne Historique"
+          >
+            <div className="w-0.5 h-6 bg-stone-700 group-hover:bg-orange-400 rounded" />
+          </div>
         )}
 
         {/* ============ COLONNE DROITE : HISTORIQUE ============ */}
-        {/* Desktop (>= md) : colonne fixe redimensionnable (toggle showHistory).
-            Mobile (< md) : panneau coulissant masqué par défaut, ouvert par
-            glisser le doigt vers la gauche sur la moitié droite. Bouton
-            flottant pour (ré)ouvrir / fermer. */}
-        <div
-          style={isMobile ? undefined : { width: `${historyWidth}px` }}
-          className={`relative shrink-0 flex flex-col min-h-0 border-l border-stone-800 bg-stone-900/40 overflow-y-auto
-            ${isMobile ? 'fixed right-0 top-0 bottom-0 z-30 w-1/2 max-w-[50vw] box-border overflow-x-hidden transform transition-transform duration-200 ease-out shadow-2xl' : ''}
-            ${isMobile && !historyOpen ? 'translate-x-full' : ''}
-            ${!isMobile && !showHistory ? 'hidden' : ''}`}
-        >
-          {/* FIX 2026-08-22 (Manager) : min-h identique a l'en-tete terminal de
-              gauche pour que les 2 bandeaux soient TOUJOURS a la meme hauteur. */}
-          <div className="px-3 py-2 flex items-center justify-between border-b border-stone-800 sticky top-0 bg-stone-900/90 backdrop-blur min-h-[2.75rem]">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Historique</span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setSelectMode((m) => !m)}
-                className="text-[10px] uppercase tracking-widest text-orange-500 hover:text-orange-300"
-                title="Mode selection multiple"
-              >
-                {selectMode ? 'annuler' : 'select'}
-              </button>
-              <button
-                onClick={() => activeAgent && loadSessions(activeAgent, currentSessionId)}
-                title="Rafraichir l'historique"
-                className="text-stone-500 hover:text-orange-300 transition-colors"
-              >
-                {loadingSessions ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="text-xs">⟳</span>}
-              </button>
-              {isMobile && (
+        {/* Desktop (>= lg) : colonne fixe redimensionnable (toggle showHistory).
+            Mobile / Tablette portrait (< lg) : panneau coulissant masqué par défaut, ouvert par
+            glisser le doigt vers la gauche sur la moitié droite ou via le bouton flottant en bas à droite. */}
+        {isMobile ? (
+          <div
+            className={`fixed inset-y-0 right-0 z-40 w-72 max-w-[80vw] flex flex-col bg-stone-900/95 border-l border-stone-800 shadow-2xl backdrop-blur-md overflow-y-auto overflow-x-hidden transform transition-transform duration-200 ease-out ${
+              historyOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
+            }`}
+          >
+            <div className="px-3 py-2 flex items-center justify-between border-b border-stone-800 sticky top-0 bg-stone-900/90 backdrop-blur min-h-[2.75rem]">
+              <span className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Historique</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectMode((m) => !m)}
+                  className="text-[10px] uppercase tracking-widest text-orange-500 hover:text-orange-300"
+                  title="Mode selection multiple"
+                >
+                  {selectMode ? 'annuler' : 'select'}
+                </button>
+                <button
+                  onClick={() => activeAgent && loadSessions(activeAgent, currentSessionId)}
+                  title="Rafraichir l'historique"
+                  className="text-stone-500 hover:text-orange-300 transition-colors"
+                >
+                  {loadingSessions ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="text-xs">⟳</span>}
+                </button>
                 <button
                   onClick={() => setHistoryOpen(false)}
-                  className="text-stone-400 hover:text-stone-100"
+                  className="text-stone-400 hover:text-stone-100 p-1"
                   title="Fermer"
                 >
                   ✕
                 </button>
-              )}
+              </div>
             </div>
-          </div>
 
-          {/* Filtre par source d'origine */}
-          <div className="px-3 py-2 border-b border-stone-800 flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-widest text-stone-600 shrink-0">Source</span>
-            <select
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value)}
-              className="flex-1 bg-stone-950 border border-stone-800 rounded px-2 py-1 text-[11px] text-stone-300 font-mono focus:outline-none focus:border-orange-600"
-            >
-              <option value="">Toutes</option>
-              <option value="cron">Cron</option>
-              <option value="mc">Mission Control</option>
-              <option value="telegram">Telegram</option>
-              <option value="discord">Discord</option>
-              <option value="tui">CLI / TUI</option>
-              <option value="cli">CLI</option>
-              <option value="web">Web</option>
-              <option value="api">API</option>
-            </select>
-          </div>
-
-          {selectMode && (
+            {/* Filtre par source d'origine */}
             <div className="px-3 py-2 border-b border-stone-800 flex items-center gap-2">
-              <input
-                type="checkbox"
-                className="accent-orange-500 w-3.5 h-3.5"
-                checked={selected.size === sessions.length && sessions.length > 0}
-                onChange={(e) => {
-                  if (e.target.checked) setSelected(new Set(sessions.map((s) => s.id)));
-                  else setSelected(new Set());
-                }}
-                title="Tout cocher"
-              />
-              <button
-                onClick={deleteSelection}
-                disabled={selected.size === 0}
-                className="flex items-center gap-1 px-2 py-1 rounded bg-red-700 disabled:bg-stone-800 disabled:text-stone-600 text-white text-[11px] font-mono"
+              <span className="text-[10px] uppercase tracking-widest text-stone-600 shrink-0">Source</span>
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="flex-1 bg-stone-950 border border-stone-800 rounded px-2 py-1 text-[11px] text-stone-300 font-mono focus:outline-none focus:border-orange-600"
               >
-                <Trash2 className="w-3 h-3" /> ({selected.size})
-              </button>
-              <button
-                onClick={deleteAll}
-                className="ml-auto text-[10px] uppercase text-red-500 hover:text-red-300"
-                title="Supprimer TOUTES les sessions"
-              >
-                tout
-              </button>
+                <option value="">Toutes</option>
+                <option value="cron">Cron</option>
+                <option value="mc">Mission Control</option>
+                <option value="telegram">Telegram</option>
+                <option value="discord">Discord</option>
+                <option value="tui">CLI / TUI</option>
+                <option value="cli">CLI</option>
+                <option value="web">Web</option>
+                <option value="api">API</option>
+              </select>
             </div>
-          )}
 
-          <div className="flex-1 divide-y divide-stone-800/60">
-            {!activeAgent && (
-              <div className="px-3 py-3 text-xs text-stone-600 font-mono">—</div>
-            )}
-            {activeAgent && !loadingSessions && filteredSessions.length === 0 && (
-              <div className="px-3 py-3 text-xs text-stone-600 font-mono">
-                {sessions.length === 0 ? 'aucune session' : 'aucune session pour ce filtre'}
+            {selectMode && (
+              <div className="px-3 py-2 border-b border-stone-800 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="accent-orange-500 w-3.5 h-3.5"
+                  checked={selected.size === sessions.length && sessions.length > 0}
+                  onChange={(e) => {
+                    if (e.target.checked) setSelected(new Set(sessions.map((s) => s.id)));
+                    else setSelected(new Set());
+                  }}
+                  title="Tout cocher"
+                />
+                <button
+                  onClick={deleteSelection}
+                  disabled={selected.size === 0}
+                  className="flex items-center gap-1 px-2 py-1 rounded bg-red-700 disabled:bg-stone-800 disabled:text-stone-600 text-white text-[11px] font-mono"
+                >
+                  <Trash2 className="w-3 h-3" /> ({selected.size})
+                </button>
+                <button
+                  onClick={deleteAll}
+                  className="ml-auto text-[10px] uppercase text-red-500 hover:text-red-300"
+                  title="Supprimer TOUTES les sessions"
+                >
+                  tout
+                </button>
               </div>
             )}
-            {filteredSessions.map((s) => {
-              const isOpen = s.id === currentSessionId;
-              const isSel = selected.has(s.id);
-              const d = new Date(s.created_at * 1000).toLocaleString('fr-FR', {
-                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-              });
-              return (
-                <div
-                  key={s.id}
-                  onClick={() => !selectMode && openSession(s.id)}
-                  className={`flex items-start gap-2 px-3 py-2 cursor-pointer border-l-2 transition-colors ${
-                    isOpen
-                      ? 'border-orange-500 bg-orange-600/10'
-                      : 'border-transparent hover:bg-stone-800/50'
-                  }`}
-                >
-                  {selectMode && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelected((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(s.id)) next.delete(s.id);
-                          else next.add(s.id);
-                          return next;
-                        });
-                      }}
-                      className="shrink-0"
-                    >
-                      {isSel
-                        ? <CheckSquare className="w-3.5 h-3.5 text-orange-500" />
-                        : <Square className="w-3.5 h-3.5 text-stone-600" />}
-                    </button>
-                  )}
-                  {/* Sur mobile : titre (ligne 1, pleine largeur) + détails (ligne 2).
-                      Sur desktop : reste en une seule rangée fluide. */}
-                  <div className="flex-1 min-w-0">
-                    <div className={`flex items-center gap-1.5 text-[12px] ${isOpen ? 'text-orange-200' : 'text-stone-300'}`}>
-                      <SourceBadge source={s.source} />
-                      <span className="truncate">{s.title || s.id}</span>
-                      {s.live?.running && <Loader2 className="w-3 h-3 animate-spin text-orange-400 shrink-0" />}
-                    </div>
-                    <div className="text-[10px] text-stone-500 mt-0.5">{s.message_count} msg · {d}</div>
-                  </div>
-                  {!selectMode && (
-                      <button
-                      onClick={(e) => { e.stopPropagation(); deleteOne(s.id); }}
-                      title="Supprimer cette session"
-                      className="ml-auto shrink-0 self-center text-stone-600 hover:text-red-400 transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
 
-        {/* Bouton flottant ouverture Historique (mobile/tablette uniquement) */}
+            <div className="flex-1 divide-y divide-stone-800/60">
+              {!activeAgent && (
+                <div className="px-3 py-3 text-xs text-stone-600 font-mono">—</div>
+              )}
+              {activeAgent && !loadingSessions && filteredSessions.length === 0 && (
+                <div className="px-3 py-3 text-xs text-stone-600 font-mono">
+                  {sessions.length === 0 ? 'aucune session' : 'aucune session pour ce filtre'}
+                </div>
+              )}
+              {filteredSessions.map((s) => {
+                const isOpen = s.id === currentSessionId;
+                const isSel = selected.has(s.id);
+                const d = new Date(s.created_at * 1000).toLocaleString('fr-FR', {
+                  day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                });
+                return (
+                  <div
+                    key={s.id}
+                    onClick={() => !selectMode && openSession(s.id)}
+                    className={`flex items-start gap-2 px-3 py-2 cursor-pointer border-l-2 transition-colors ${
+                      isOpen
+                        ? 'border-orange-500 bg-orange-600/10'
+                        : 'border-transparent hover:bg-stone-800/50'
+                    }`}
+                  >
+                    {selectMode && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelected((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(s.id)) next.delete(s.id);
+                            else next.add(s.id);
+                            return next;
+                          });
+                        }}
+                        className="shrink-0"
+                      >
+                        {isSel
+                          ? <CheckSquare className="w-3.5 h-3.5 text-orange-500" />
+                          : <Square className="w-3.5 h-3.5 text-stone-600" />}
+                      </button>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className={`flex items-center gap-1.5 text-[12px] ${isOpen ? 'text-orange-200' : 'text-stone-300'}`}>
+                        <SourceBadge source={s.source} />
+                        <span className="truncate">{s.title || s.id}</span>
+                        {s.live?.running && <Loader2 className="w-3 h-3 animate-spin text-orange-400 shrink-0" />}
+                      </div>
+                      <div className="text-[10px] text-stone-500 mt-0.5">{s.message_count} msg · {d}</div>
+                    </div>
+                    {!selectMode && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteOne(s.id); }}
+                        title="Supprimer cette session"
+                        className="ml-auto shrink-0 self-center text-stone-600 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{ width: `${historyWidth}px` }}
+            className={`relative shrink-0 flex flex-col min-h-0 border-l border-stone-800 bg-stone-900/40 overflow-y-auto ${
+              !showHistory ? 'hidden' : ''
+            }`}
+          >
+            <div className="px-3 py-2 flex items-center justify-between border-b border-stone-800 sticky top-0 bg-stone-900/90 backdrop-blur min-h-[2.75rem]">
+              <span className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Historique</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectMode((m) => !m)}
+                  className="text-[10px] uppercase tracking-widest text-orange-500 hover:text-orange-300"
+                  title="Mode selection multiple"
+                >
+                  {selectMode ? 'annuler' : 'select'}
+                </button>
+                <button
+                  onClick={() => activeAgent && loadSessions(activeAgent, currentSessionId)}
+                  title="Rafraichir l'historique"
+                  className="text-stone-500 hover:text-orange-300 transition-colors"
+                >
+                  {loadingSessions ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="text-xs">⟳</span>}
+                </button>
+              </div>
+            </div>
+
+            {/* Filtre par source d'origine */}
+            <div className="px-3 py-2 border-b border-stone-800 flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-widest text-stone-600 shrink-0">Source</span>
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="flex-1 bg-stone-950 border border-stone-800 rounded px-2 py-1 text-[11px] text-stone-300 font-mono focus:outline-none focus:border-orange-600"
+              >
+                <option value="">Toutes</option>
+                <option value="cron">Cron</option>
+                <option value="mc">Mission Control</option>
+                <option value="telegram">Telegram</option>
+                <option value="discord">Discord</option>
+                <option value="tui">CLI / TUI</option>
+                <option value="cli">CLI</option>
+                <option value="web">Web</option>
+                <option value="api">API</option>
+              </select>
+            </div>
+
+            {selectMode && (
+              <div className="px-3 py-2 border-b border-stone-800 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="accent-orange-500 w-3.5 h-3.5"
+                  checked={selected.size === sessions.length && sessions.length > 0}
+                  onChange={(e) => {
+                    if (e.target.checked) setSelected(new Set(sessions.map((s) => s.id)));
+                    else setSelected(new Set());
+                  }}
+                  title="Tout cocher"
+                />
+                <button
+                  onClick={deleteSelection}
+                  disabled={selected.size === 0}
+                  className="flex items-center gap-1 px-2 py-1 rounded bg-red-700 disabled:bg-stone-800 disabled:text-stone-600 text-white text-[11px] font-mono"
+                >
+                  <Trash2 className="w-3 h-3" /> ({selected.size})
+                </button>
+                <button
+                  onClick={deleteAll}
+                  className="ml-auto text-[10px] uppercase text-red-500 hover:text-red-300"
+                  title="Supprimer TOUTES les sessions"
+                >
+                  tout
+                </button>
+              </div>
+            )}
+
+            <div className="flex-1 divide-y divide-stone-800/60">
+              {!activeAgent && (
+                <div className="px-3 py-3 text-xs text-stone-600 font-mono">—</div>
+              )}
+              {activeAgent && !loadingSessions && filteredSessions.length === 0 && (
+                <div className="px-3 py-3 text-xs text-stone-600 font-mono">
+                  {sessions.length === 0 ? 'aucune session' : 'aucune session pour ce filtre'}
+                </div>
+              )}
+              {filteredSessions.map((s) => {
+                const isOpen = s.id === currentSessionId;
+                const isSel = selected.has(s.id);
+                const d = new Date(s.created_at * 1000).toLocaleString('fr-FR', {
+                  day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                });
+                return (
+                  <div
+                    key={s.id}
+                    onClick={() => !selectMode && openSession(s.id)}
+                    className={`flex items-start gap-2 px-3 py-2 cursor-pointer border-l-2 transition-colors ${
+                      isOpen
+                        ? 'border-orange-500 bg-orange-600/10'
+                        : 'border-transparent hover:bg-stone-800/50'
+                    }`}
+                  >
+                    {selectMode && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelected((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(s.id)) next.delete(s.id);
+                            else next.add(s.id);
+                            return next;
+                          });
+                        }}
+                        className="shrink-0"
+                      >
+                        {isSel
+                          ? <CheckSquare className="w-3.5 h-3.5 text-orange-500" />
+                          : <Square className="w-3.5 h-3.5 text-stone-600" />}
+                      </button>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className={`flex items-center gap-1.5 text-[12px] ${isOpen ? 'text-orange-200' : 'text-stone-300'}`}>
+                        <SourceBadge source={s.source} />
+                        <span className="truncate">{s.title || s.id}</span>
+                        {s.live?.running && <Loader2 className="w-3 h-3 animate-spin text-orange-400 shrink-0" />}
+                      </div>
+                      <div className="text-[10px] text-stone-500 mt-0.5">{s.message_count} msg · {d}</div>
+                    </div>
+                    {!selectMode && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteOne(s.id); }}
+                        title="Supprimer cette session"
+                        className="ml-auto shrink-0 self-center text-stone-600 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Bouton flottant ouverture Historique (mobile / tablette portrait uniquement) */}
         {isMobile && !historyOpen && (
           <button
             onClick={() => setHistoryOpen(true)}
-            title="Historique (glisser la moitié droite)"
-            className="md:hidden fixed right-2 bottom-24 z-40 flex items-center justify-center w-11 h-11 rounded-full bg-stone-800 text-stone-300 border border-stone-700 shadow-lg active:bg-stone-700"
+            title="Historique"
+            className="fixed right-3 bottom-20 z-40 flex items-center justify-center w-11 h-11 rounded-full bg-stone-800 text-stone-300 border border-stone-700 shadow-lg active:bg-stone-700 hover:bg-stone-750"
           >
             <PanelRight className="w-5 h-5" />
           </button>

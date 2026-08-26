@@ -46,7 +46,7 @@ export const MessagesSearch: React.FC<MessagesSearchProps> = ({ agents, onFilter
   const hasActiveFilters = keyword || agentFilter || dateFrom || dateTo;
 
   return (
-    <div className="mb-4">
+    <div className="w-full">
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />

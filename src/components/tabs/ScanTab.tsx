@@ -287,8 +287,8 @@ const buildMergedFromByKey = (
   status,
   configured,
   error,
-  results: Object.values(scanSession.byKey),
-  raw,
+  results: Object.values(scanSession.byKey || {}),
+  raw: raw || {},
 });
 
 // Normalize any `results` field (from localStorage restore or legacy API
@@ -300,7 +300,7 @@ const normalizeResults = (r: unknown): ScanModelResult[] =>
   Array.isArray(r)
     ? r
     : r && typeof r === 'object'
-      ? (Object.values(r) as ScanModelResult[]).filter(
+      ? (Object.values(r as Record<string, unknown>) as ScanModelResult[]).filter(
           (x) => x != null && typeof x === 'object',
         )
       : [];
@@ -499,7 +499,7 @@ export const ScanTab: React.FC = () => {
   const [blRowBusy, setBlRowBusy] = useState<Record<string, boolean>>({});
   // v1.17.69 : total de modeles blacklistes, TOUS providers confondus.
   const blTotalCount = useMemo(
-    () => Object.values(blacklist).reduce((n, l) => n + (l?.length ?? 0), 0),
+    () => Object.values(blacklist || {}).reduce((n, l) => n + (l?.length ?? 0), 0),
     [blacklist],
   );
   // Horodatage (epoch secondes) du dernier test de capacites par modele.
@@ -611,12 +611,12 @@ export const ScanTab: React.FC = () => {
   // `count` -> affichait 1041 au lieu de ~138). Cohérent avec les modals
   // d'attribution de modèle et le bandeau SCAN "X OK".
   const allModelsAvailable = useMemo(() => {
-    if (!providerScanConfig || Object.keys(providerScanConfig).length === 0) {
+    if (!providerScanConfig || Object.keys(providerScanConfig || {}).length === 0) {
       // Config pas encore chargée : on ne compte pas (évitons un 0 erroné).
       return 0;
     }
     let n = 0;
-    for (const r of Object.values(scanSession.byKey)) {
+    for (const r of Object.values(scanSession.byKey || {})) {
       const p = (r.provider || '').trim();
       if (!p || !r.model) continue;
       if (providerScanConfig[p] !== true) continue;   // SEULEMENT providers cochés
@@ -702,13 +702,13 @@ export const ScanTab: React.FC = () => {
             };
           }
         }
-        if (Object.keys(newCaps).length) {
+        if (Object.keys(newCaps || {}).length) {
           setCaps((prev) => ({ ...(prev || {}), ...newCaps }));
         }
-        if (Object.keys(newLast).length) {
+        if (Object.keys(newLast || {}).length) {
           setCapsLastChecked((prev) => ({ ...(prev || {}), ...newLast }));
         }
-        const items = Object.values(scanSession.byKey);
+        const items = Object.values(scanSession.byKey || {});
         if (!items.length) return;
         // Ne pas ecraser un scan EN COURS: on ne (re)construit le merged que si
         // aucun scan ne tourne. Sinon le poll en cours le fera avec ses metas.
@@ -735,9 +735,9 @@ export const ScanTab: React.FC = () => {
   const allModels = useMemo<FlatModel[]>(() => {
     if (!catalog) return [];
     const out: FlatModel[] = [];
-    for (const [key, meta] of Object.entries(catalog.providers || {})) {
+    for (const [key, meta] of Object.entries(catalog?.providers || {})) {
       // Skip provider if not enabled for scan (when config is not empty)
-      if (Object.keys(providerScanConfig).length > 0 && !providerScanConfig[key]) {
+      if (Object.keys(providerScanConfig || {}).length > 0 && !providerScanConfig[key]) {
         continue;
       }
       const models = meta.models || [];
@@ -765,7 +765,7 @@ export const ScanTab: React.FC = () => {
     const meta = provider ? catalog?.providers?.[provider] : undefined;
     let models = meta?.models ?? [];
     // If provider scan config is not empty, only include models if provider is enabled
-    if (Object.keys(providerScanConfig).length > 0 && !providerScanConfig[provider]) {
+    if (Object.keys(providerScanConfig || {}).length > 0 && !providerScanConfig[provider]) {
       models = [];
     }
     return models.map((m: { id: string; description?: string }) => ({
@@ -813,7 +813,7 @@ export const ScanTab: React.FC = () => {
       // (historique persistant, alimente par la DB serveur + les scans),
       // de sorte que le tableau reste affiche et se contente de se mettre a
       // jour au fil du scan.
-      const hist = Object.values(scanSession.byKey);
+      const hist = Object.values(scanSession.byKey || {});
       const mergedNext: MergedScan | null = hist.length
         ? {
             provider,
@@ -966,9 +966,9 @@ export const ScanTab: React.FC = () => {
   // Refs: ecrites explicitement (les refs ne declenchent pas de re-render, on
   // les synchronise aux bons endroits : handlePlay/handleStop + polling).
 
-  const providersRaw = catalog ? Object.entries(catalog.providers) : [];
+  const providersRaw = catalog?.providers ? Object.entries(catalog.providers) : [];
   let providers = providersRaw;
-  if (Object.keys(providerScanConfig).length > 0) {
+  if (Object.keys(providerScanConfig || {}).length > 0) {
     // If scan provider config is explicitly set, filter to only those providers that are enabled
     providers = providersRaw.filter(([key]) => providerScanConfig[key] === true);
   }
@@ -1074,7 +1074,7 @@ export const ScanTab: React.FC = () => {
       status: 'running',
       configured: true,
       error: null,
-      results: Object.values(scanSession.byKey),
+      results: Object.values(scanSession.byKey || {}),
       raw: {},
     });
 
@@ -1202,7 +1202,7 @@ export const ScanTab: React.FC = () => {
         setStore({ byKey: scanSession.byKey });
         // Reconstruit merged depuis byKey pour refleter le nouveau resultat
         // sans perdre les autres (coherent avec le poll de handlePlay).
-        const allResults = Object.values(scanSession.byKey);
+        const allResults = Object.values(scanSession.byKey || {});
         setMerged((prev) => {
           const t = batchTotal ?? (prev?.total || allResults.length);
           const d = batchTotal ? Math.min(t, (prev?.done ?? 0) + 1) : allResults.length;
@@ -1282,7 +1282,7 @@ export const ScanTab: React.FC = () => {
     setScannedSession(new Set());
 
     // Initialise merged avec le nombre de modeles coches a scanner
-    const hist = Object.values(scanSession.byKey);
+    const hist = Object.values(scanSession.byKey || {});
     setMerged({
       provider: provider || ALL_PROVIDERS,
       total: keys.length,
@@ -1772,7 +1772,7 @@ export const ScanTab: React.FC = () => {
   // B) CAPACITES : modeles coches pour les tests + progression des tests.
   const testCheckedCount = testChecked.size;
   const capsActive = testingAll !== null
-    || Object.keys(colState).some((k) => colState[k] === 'running');
+    || Object.keys(colState || {}).some((k) => colState[k] === 'running');
   // X = nombre de modeles TESTES DANS CETTE SESSION (present dans
   // testedSession). On compte testedSession.size directement (et non
   // l'intersection avec testChecked) car les modeles se decochent apres
@@ -1930,7 +1930,7 @@ export const ScanTab: React.FC = () => {
                 setStore({ byKey: next });
                 setMerged((prev) => {
                   if (!prev) return null;
-                  const items = Object.values(scanSession.byKey);
+                  const items = Object.values(scanSession.byKey || {});
                   return buildMergedFromByKey(
                     prev.provider === ALL_PROVIDERS,
                     provider,
@@ -2477,7 +2477,7 @@ export const ScanTab: React.FC = () => {
               <button
                 onClick={async () => {
                   if (blBusy) return;
-                  const provCount = Object.keys(blacklist).filter(
+                  const provCount = Object.keys(blacklist || {}).filter(
                     (p) => (blacklist[p]?.length ?? 0) > 0,
                   ).length;
                   if (

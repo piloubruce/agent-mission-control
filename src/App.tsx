@@ -176,9 +176,9 @@ export default function App() {
 
   return (
     <NotificationProvider>
-      <div className="flex flex-col md:flex-row min-h-screen bg-stone-950 text-stone-200 font-sans selection:bg-orange-500/30">
+      <div className="flex flex-col lg:flex-row h-screen h-[100dvh] max-h-[100dvh] overflow-hidden bg-stone-950 text-stone-200 font-sans selection:bg-orange-500/30">
         <TopNav activeTab={activeTab} onTabChange={handleTabChange} liveOpen={liveOpen} setLiveOpen={setLiveOpen} />
-        <main className="flex-1 min-w-0 w-full p-0 md:p-0 animate-in fade-in duration-500 overflow-y-auto">
+        <main className={`flex-1 min-w-0 w-full h-full p-0 animate-in fade-in duration-500 ${activeTab === 'messages' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           <TabErrorBoundary>
             {renderTab()}
           </TabErrorBoundary>
