@@ -34,3 +34,21 @@ sessions/
 *.bak-*
 *.bak
 *~
+
+# --- Runtime / live data (NOT part of a clean install) ---
+# Filled blacklist + MC config are regenerated at runtime (server returns {} if missing,
+# frontend uses localStorage defaults). Keep them OFF the repo for a clean-install snapshot.
+blacklist.json
+mc_config.json
+mc_session_map.json
+mc_favs.json
+_models_*.json
+
+# Dead / dev-only files at repo root
+apiServer.ts
+auto-github-sync.sh
+translate.mjs
+
+# Dev-only debug scripts (underscore prefix)
+backend/_test_hermes.py
+scripts/_*.py
