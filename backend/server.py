@@ -7238,8 +7238,17 @@ def _mc_spawn_detached(unit: str, script_path: str) -> None:
     )
 
 
+def _read_dashboard_version():
+    """Read dashboard version from VERSION file (falls back to 0.0.0)."""
+    try:
+        with open(os.path.join(PROJECT_DIR, "VERSION"), "r", encoding="utf-8") as fh:
+            return fh.read().strip() or "0.0.0"
+    except Exception:
+        return "0.0.0"
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "HermesMissionControl/1.0"
+    server_version = "HermesMissionControl/" + _read_dashboard_version()
 
     # ---- quiet logging ----
     def log_message(self, fmt, *args):
