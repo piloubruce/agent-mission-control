@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Menu, PanelRight } from 'lucide-react';
 import {
   Paperclip,
   Trash2,
@@ -413,6 +414,71 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
   const [showHistory, setShowHistory] = useState<boolean>(true);
   // Ref sur la zone de chat principale pour fermer l'historique au clic dedans.
   const chatAreaRef = useRef<HTMLDivElement | null>(null);
+
+  // --- MOBILE / TABLETTE (écran < 768px = breakpoint `md` de Tailwind) ---
+  // Sur ces appareils, les colonnes latérales (Agents à gauche, Historique à
+  // droite) deviennent des panneaux coulissants masqués par défaut, ouverts
+  // par glissement tactile :
+  //   * Agents   -> glisser doigt sur la MOITIÉ INFÉRIEURE gauche  (vers la droite)
+  //   * Historique -> glisser doigt sur la moitié droite            (vers la gauche)
+  // Sur desktop (>= md) tout reste tel quel (colonnes visibles + redimensionnables).
+  const [isMobile, setIsMobile] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false,
+  );
+  const [agentsOpen, setAgentsOpen] = useState<boolean>(false);
+  const [historyOpen, setHistoryOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else mq.addListener(onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
+
+  // Refs de suivi du geste tactile (pour ne pas ouvrir quand on scroll la conversation).
+  const gestureRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    onLeft: boolean;
+    onTopHalf: boolean;
+  }>({ active: false, startX: 0, startY: 0, onLeft: false, onTopHalf: false });
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (!isMobile) return;
+    const t = e.touches[0];
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    gestureRef.current = {
+      active: true,
+      startX: t.clientX,
+      startY: t.clientY,
+      onLeft: t.clientX < w * 0.4,
+      onTopHalf: t.clientY < h * 0.5,
+    };
+  };
+
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (!isMobile || !gestureRef.current.active) return;
+    const g = gestureRef.current;
+    gestureRef.current.active = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - g.startX;
+    const dy = t.clientY - g.startY;
+    // Ignorer les gestes quasi-verticaux (scroll) ou trop courts.
+    if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (g.onLeft) {
+      // Moitié gauche : ouvrir Agents uniquement depuis la MOITIÉ INFÉRIEURE.
+      if (!g.onTopHalf && dx > 0) setAgentsOpen(true);
+    } else {
+      // Moitié droite : ouvrir Historique en glissant vers la gauche.
+      if (dx < 0) setHistoryOpen(true);
+    }
+  };
 
   const isDraggingAgents = useRef(false);
   const isDraggingHistory = useRef(false);
@@ -1397,21 +1463,47 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
   }, [openSessionObj, contextMaxTokens, liveRunning, liveStatus]);
 
   return (
-    <div className="w-full h-[calc(100vh-7rem)] flex flex-col">
+    <div
+      className="w-full max-md:h-[100dvh] md:h-full overflow-hidden flex flex-col max-md:pt-14"
+      onTouchStart={isMobile ? onTouchStart : undefined}
+      onTouchEnd={isMobile ? onTouchEnd : undefined}
+    >
       {error && (
         <div className="text-red-400 text-xs font-mono bg-red-900/20 border-b border-red-900/50 px-3 py-2 shrink-0">
           Erreur : {error}
         </div>
       )}
 
-      <div ref={containerRef} className="flex-1 flex items-stretch min-h-0">
+      <div ref={containerRef} className="relative flex-1 flex items-stretch min-h-0">
+        {/* Sur mobile/tablette : voile derrière le panneau ouvert (ferme au clic). */}
+        {isMobile && (agentsOpen || historyOpen) && (
+          <div
+            className="absolute inset-0 z-20 bg-black/60 md:hidden"
+            onClick={() => { setAgentsOpen(false); setHistoryOpen(false); }}
+          />
+        )}
         {/* ============ COLONNE GAUCHE : AGENTS ============ */}
+        {/* Desktop (>= md) : colonne fixe redimensionnable. Mobile (< md) :
+            panneau coulissant masqué par défaut, ouvert par glisser la moitié
+            INFÉRIEURE gauche vers la droite. Bouton flottant pour (ré)ouvrir /
+            fermer. Clic sur un agent -> sélection + fermeture du panneau. */}
         <div
-          style={{ width: `${agentsWidth}px` }}
-          className="relative shrink-0 flex flex-col border-r border-stone-800 bg-stone-900/40 overflow-y-auto"
+          style={isMobile ? undefined : { width: `${agentsWidth}px` }}
+          className={`relative shrink-0 flex flex-col min-h-0 border-r border-stone-800 bg-stone-900/40 overflow-y-auto
+            ${isMobile ? 'fixed left-0 top-0 bottom-0 z-30 w-1/2 max-w-[50vw] box-border overflow-x-hidden transform transition-transform duration-200 ease-out shadow-2xl' : ''}
+            ${isMobile && !agentsOpen ? '-translate-x-full' : ''}`}
         >
-          <div className="px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-stone-500 border-b border-stone-800 sticky top-0 bg-stone-900/90 backdrop-blur">
-            Agents
+          <div className="px-3 py-2 flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-stone-500 border-b border-stone-800 sticky top-0 bg-stone-900/90 backdrop-blur">
+            <span>Agents</span>
+            {isMobile && (
+              <button
+                onClick={() => setAgentsOpen(false)}
+                className="text-stone-400 hover:text-stone-100"
+                title="Fermer"
+              >
+                ✕
+              </button>
+            )}
           </div>
           {agents.length === 0 && (
             <div className="px-3 py-3 text-xs text-stone-500 font-mono">chargement…</div>
@@ -1424,7 +1516,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
             return (
               <button
                 key={a.agent}
-                onClick={() => handleAgentClick(a.agent)}
+                onClick={() => { handleAgentClick(a.agent); if (isMobile) setAgentsOpen(false); }}
                 title={a.name}
                 className={`flex items-center gap-2 px-3 py-2 text-left font-mono text-[13px] border-l-2 transition-colors ${
                   isActive
@@ -1442,6 +1534,17 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
           })}
         </div>
 
+        {/* Bouton flottant ouverture Agents (mobile/tablette uniquement) */}
+        {isMobile && !agentsOpen && (
+          <button
+            onClick={() => setAgentsOpen(true)}
+            title="Agents (glisser la moitié bas-gauche)"
+            className="md:hidden fixed left-2 bottom-24 z-40 flex items-center justify-center w-11 h-11 rounded-full bg-stone-800 text-stone-300 border border-stone-700 shadow-lg active:bg-stone-700"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
+
         {/* Poignée de redimensionnement pour la colonne Agents */}
         <div
           onMouseDown={startResizeAgents}
@@ -1452,7 +1555,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
         </div>
 
         {/* ============ CENTRE : TERMINAL CLI ============ */}
-        <div className="flex-1 min-w-0 flex flex-col bg-stone-950">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-stone-950">
           {/* En-tete terminal : agent + modele + indicateurs (temps reflexion,
               duree session, jauge contexte). Les indicateurs sont calcules
               cote front (cf. useMemo plus haut) car le backend
@@ -1461,60 +1564,63 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
               pour que cet en-tete garde TOUJOURS 1 ligne de meme hauteur que
               l'en-tete "Historique" de droite (sinon en flex-wrap il passait
               en 2 lignes sur ecran etroit -> bandeaux desalignes). */}
-          <div className="shrink-0 flex flex-nowrap items-center gap-x-3 gap-y-1 px-3 py-2 border-b border-stone-800 bg-stone-900/70 font-mono text-xs min-h-[2.75rem] overflow-x-hidden whitespace-nowrap">
-            <span className="flex gap-1.5 mr-1 shrink-0">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
-              <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
-              <span className="w-2.5 h-2.5 rounded-full bg-green-500/70" />
-            </span>
-            <span className="text-green-400 shrink-0">agent@mc</span>
-            <span className="text-stone-600 shrink-0">:</span>
-            <span className="text-blue-400 shrink-0">~</span>
-            <span className="text-stone-600 shrink-0">$</span>
-            <span className="text-orange-400 shrink-0">{activeAgent || '—'}</span>
-            <span className="text-stone-400 truncate min-w-0">
+          <div className="shrink-0 flex flex-col gap-y-1 px-3 py-2 border-b border-stone-800 bg-stone-900/70 font-mono text-xs min-h-[2.75rem] md:flex-row md:items-center md:gap-x-3 md:whitespace-nowrap md:overflow-x-hidden">
+            {/* Ligne 1 (mobile) / début de ligne (desktop) : prompt agent */}
+            <div className="flex items-center gap-x-3">
+              <span className="flex gap-1.5 mr-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
+                <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500/70" />
+              </span>
+              <span className="text-green-400">agent@mc</span>
+              <span className="text-stone-600">:</span>
+              <span className="text-blue-400">~</span>
+              <span className="text-stone-600">$</span>
+              <span className="text-orange-400">{activeAgent || '—'}</span>
+            </div>
+            {/* Ligne 2 (mobile) / suite (desktop) : modele */}
+            <div className="text-stone-400 truncate min-w-0">
               [model: {activeModel}
               {activeProvider ? ` @ ${activeProvider}` : ''}]
-            </span>
-            <span className="text-stone-600">·</span>
-            {/* Temps de reflexion : latence avant le 1er token (ce tour). */}
-            <span title="Temps de réflexion (latence avant le 1er token)" className="flex items-center gap-1 text-stone-400">
-              <span className="text-stone-500">réflexion</span>
-              <span className={reflectionMs !== null ? 'text-amber-300' : 'text-stone-600'}>
-                {reflectionMs !== null ? `${(reflectionMs / 1000).toFixed(1)}s` : '—'}
+            </div>
+            {/* Ligne 3 (mobile) / suite (desktop) : indicateurs */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span title="Temps de réflexion (latence avant le 1er token)" className="flex items-center gap-1 text-stone-400">
+                <span className="text-stone-500">réflexion</span>
+                <span className={reflectionMs !== null ? 'text-amber-300' : 'text-stone-600'}>
+                  {reflectionMs !== null ? `${(reflectionMs / 1000).toFixed(1)}s` : '—'}
+                </span>
               </span>
-            </span>
-            <span className="text-stone-600">·</span>
-            {/* Duree de session : created_at -> dernier message (live = maintenant). */}
-            <span title="Durée de la session (création → dernière réponse)" className="flex items-center gap-1 text-stone-400">
-              <span className="text-stone-500">session</span>
-              <span className="text-cyan-300">
-                {sessionDurationMs !== null
-                  ? `${Math.floor(sessionDurationMs / 60000)}m${String(Math.floor((sessionDurationMs % 60000) / 1000)).padStart(2, '0')}s`
-                  : '—'}
+              <span className="text-stone-600">·</span>
+              <span title="Durée de la session (création → dernière réponse)" className="flex items-center gap-1 text-stone-400">
+                <span className="text-stone-500">session</span>
+                <span className="text-cyan-300">
+                  {sessionDurationMs !== null
+                    ? `${Math.floor(sessionDurationMs / 60000)}m${String(Math.floor((sessionDurationMs % 60000) / 1000)).padStart(2, '0')}s`
+                    : '—'}
+                </span>
               </span>
-            </span>
-            <span className="text-stone-600">·</span>
-            {/* Jauge contexte : tokens estimes / contexte max du modele. */}
-            <span title="Contexte utilisé (estimation tokens ≈ caractères/4) / contexte max du modèle" className="flex items-center gap-1.5 text-stone-400">
-              <span className="text-stone-500">contexte</span>
-              {contextUsedPct !== null ? (
-                <>
-                  <span className="text-stone-300 tabular-nums">
-                    {(contextTokens / 1000).toFixed(1)}k / {((contextMaxTokens || 128000) / 1000).toFixed(1)}k
-                  </span>
-                  <span className="relative inline-block w-16 h-2 rounded-full bg-stone-700 align-middle overflow-hidden">
-                    <span
-                      className={`absolute left-0 top-0 h-full rounded-full ${contextUsedPct > 80 ? 'bg-red-500' : contextUsedPct > 50 ? 'bg-amber-400' : 'bg-emerald-500'}`}
-                      style={{ width: `${contextUsedPct}%` }}
-                    />
-                  </span>
-                  <span className="text-stone-300">{contextUsedPct}%</span>
-                </>
-              ) : (
-                <span className="text-stone-600">—</span>
-              )}
-            </span>
+              <span className="text-stone-600">·</span>
+              <span title="Contexte utilisé (estimation tokens ≈ caractères/4) / contexte max du modèle" className="flex items-center gap-1.5 text-stone-400">
+                <span className="text-stone-500">contexte</span>
+                {contextUsedPct !== null ? (
+                  <>
+                    <span className="text-stone-300 tabular-nums">
+                      {(contextTokens / 1000).toFixed(1)}k / {((contextMaxTokens || 128000) / 1000).toFixed(1)}k
+                    </span>
+                    <span className="relative inline-block w-16 h-2 rounded-full bg-stone-700 align-middle overflow-hidden">
+                      <span
+                        className={`absolute left-0 top-0 h-full rounded-full ${contextUsedPct > 80 ? 'bg-red-500' : contextUsedPct > 50 ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                        style={{ width: `${contextUsedPct}%` }}
+                      />
+                    </span>
+                    <span className="text-stone-300">{contextUsedPct}%</span>
+                  </>
+                ) : (
+                  <span className="text-stone-600">—</span>
+                )}
+              </span>
+            </div>
           </div>
 
           {/* Barre d'actions : nouvelle session + actualiser (ligne separee
@@ -1616,7 +1722,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                           {m.error && (
                             <div className="mt-1 text-xs text-red-300">⚠ {m.error}</div>
                           )}
-                          <div className="mt-0.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="mt-0.5 flex items-center gap-1 transition-opacity">
                             <CopyButton text={m.text} />
                             {isUser && (
                               <button
@@ -1632,7 +1738,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                               type="button"
                               onClick={() => handleDeleteMessage(i)}
                               title="Supprimer ce message"
-                              className="px-1.5 py-0.5 rounded text-stone-500 hover:text-red-400 hover:bg-stone-800 transition-colors"
+                              className="px-1.5 py-0.5 rounded text-stone-300 hover:text-red-400 hover:bg-stone-800 transition-colors"
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
@@ -1674,7 +1780,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                   const hasScroll = el ? el.scrollHeight - el.clientHeight > BOTTOM_THRESHOLD : false;
                   if (!hasScroll) return null;
                   return (
-                    <div className="sticky bottom-2 flex justify-end gap-2 mr-3 mb-2 float-right">
+                    <div className="sticky bottom-2 flex justify-end gap-2 mr-3 mb-2 max-md:fixed max-md:bottom-20 max-md:right-3 max-md:mr-0 max-md:z-30 max-md:flex-col">
                       {!atTop && (
                         <button
                           type="button"
@@ -1723,66 +1829,76 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
             </div>
           )}
 
-          {/* Ligne de saisie style prompt */}
+          {/* Ligne de saisie style prompt.
+              Desktop (>= md) : une seule rangée (› + paperclip + textarea + annuler + envoyer).
+              Mobile (< md) : deux rangées -> rangée 1 (› + paperclip), rangée 2
+              (textarea pleine largeur + annuler + envoyer) pour que la zone de
+              texte soit confortable au doigt. */}
           <div
-            className="shrink-0 flex items-end gap-2 px-3 py-2 border-t border-stone-800 bg-stone-900/60"
+            className="shrink-0 flex md:items-end flex-col md:flex-row gap-2 px-3 py-2 border-t border-stone-800 bg-stone-900/60"
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
               if (e.dataTransfer.files?.length) uploadFiles(e.dataTransfer.files);
             }}
           >
-            <span className="text-orange-400 font-mono text-sm pb-2 select-none">›</span>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files?.length) uploadFiles(e.target.files);
-                e.target.value = '';
-              }}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              title="Joindre un fichier"
-              className="shrink-0 p-2 rounded text-stone-500 hover:text-stone-200 hover:bg-stone-800 transition-colors"
-            >
-              <Paperclip className="w-4 h-4" />
-            </button>
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              rows={2}
-              placeholder="message… (CTRL+Entree = envoyer)"
-              className="flex-1 resize-y bg-stone-950 border border-stone-800 rounded px-2 py-1.5 text-stone-200 text-sm font-mono focus:outline-none focus:border-orange-600"
-            />
-            <button
-              onClick={handleCancel}
-              disabled={!liveRunning || cancelling}
-              title={cancelling ? 'Annulation…' : 'Annuler la generation'}
-              className={`shrink-0 flex items-center gap-1 px-2.5 py-2 rounded text-xs font-mono transition-colors ${
-                liveRunning && !cancelling
-                  ? 'bg-red-700 text-white hover:bg-red-600'
-                  : 'bg-stone-800 text-stone-600 cursor-not-allowed'
-              }`}
-            >
-              <Square className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={handleSend}
-              disabled={sending || (!input.trim() && attachments.length === 0)}
-              className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded text-xs font-mono transition-colors ${
-                sending || (!input.trim() && attachments.length === 0)
-                  ? 'bg-stone-800 text-stone-600 cursor-not-allowed'
-                  : 'bg-orange-600 text-white hover:bg-orange-500'
-              }`}
-            >
-              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              envoyer
-            </button>
+            {/* Rangée 1 : prompt + paperclip (toujours visibles, au-dessus sur mobile) */}
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <span className="text-orange-400 font-mono text-sm select-none">›</span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.length) uploadFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                title="Joindre un fichier"
+                className="shrink-0 p-2 rounded text-stone-500 hover:text-stone-200 hover:bg-stone-800 transition-colors"
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
+            </div>
+            {/* Rangée 2 : textarea + boutons (pleine largeur sur mobile) */}
+            <div className="flex items-end gap-2 w-full md:flex-1">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                rows={2}
+                placeholder="message… (CTRL+Entree = envoyer)"
+                className="flex-1 resize-y bg-stone-950 border border-stone-800 rounded px-2 py-1.5 text-stone-200 text-sm font-mono focus:outline-none focus:border-orange-600"
+              />
+              <button
+                onClick={handleCancel}
+                disabled={!liveRunning || cancelling}
+                title={cancelling ? 'Annulation…' : 'Annuler la generation'}
+                className={`shrink-0 flex items-center justify-center gap-1 px-2.5 py-2 rounded text-xs font-mono transition-colors ${
+                  liveRunning && !cancelling
+                    ? 'bg-red-700 text-white hover:bg-red-600'
+                    : 'bg-stone-800 text-stone-600 cursor-not-allowed'
+                }`}
+              >
+                <Square className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleSend}
+                disabled={sending || (!input.trim() && attachments.length === 0)}
+                className={`shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 rounded text-xs font-mono transition-colors ${
+                  sending || (!input.trim() && attachments.length === 0)
+                    ? 'bg-stone-800 text-stone-600 cursor-not-allowed'
+                    : 'bg-orange-600 text-white hover:bg-orange-500'
+                }`}
+              >
+                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                envoyer
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1798,9 +1914,16 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
         )}
 
         {/* ============ COLONNE DROITE : HISTORIQUE ============ */}
+        {/* Desktop (>= md) : colonne fixe redimensionnable (toggle showHistory).
+            Mobile (< md) : panneau coulissant masqué par défaut, ouvert par
+            glisser le doigt vers la gauche sur la moitié droite. Bouton
+            flottant pour (ré)ouvrir / fermer. */}
         <div
-          style={{ width: `${historyWidth}px` }}
-          className={`relative shrink-0 flex flex-col border-l border-stone-800 bg-stone-900/40 overflow-y-auto ${showHistory ? '' : 'hidden'}`}
+          style={isMobile ? undefined : { width: `${historyWidth}px` }}
+          className={`relative shrink-0 flex flex-col min-h-0 border-l border-stone-800 bg-stone-900/40 overflow-y-auto
+            ${isMobile ? 'fixed right-0 top-0 bottom-0 z-30 w-1/2 max-w-[50vw] box-border overflow-x-hidden transform transition-transform duration-200 ease-out shadow-2xl' : ''}
+            ${isMobile && !historyOpen ? 'translate-x-full' : ''}
+            ${!isMobile && !showHistory ? 'hidden' : ''}`}
         >
           {/* FIX 2026-08-22 (Manager) : min-h identique a l'en-tete terminal de
               gauche pour que les 2 bandeaux soient TOUJOURS a la meme hauteur. */}
@@ -1821,6 +1944,15 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
               >
                 {loadingSessions ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="text-xs">⟳</span>}
               </button>
+              {isMobile && (
+                <button
+                  onClick={() => setHistoryOpen(false)}
+                  className="text-stone-400 hover:text-stone-100"
+                  title="Fermer"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           </div>
 
@@ -1892,7 +2024,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                 <div
                   key={s.id}
                   onClick={() => !selectMode && openSession(s.id)}
-                  className={`flex items-center gap-2 px-3 py-2 cursor-pointer border-l-2 transition-colors ${
+                  className={`flex items-start gap-2 px-3 py-2 cursor-pointer border-l-2 transition-colors ${
                     isOpen
                       ? 'border-orange-500 bg-orange-600/10'
                       : 'border-transparent hover:bg-stone-800/50'
@@ -1916,21 +2048,21 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                         : <Square className="w-3.5 h-3.5 text-stone-600" />}
                     </button>
                   )}
-                  <div className="flex-1 min-w-0 font-mono">
-                    <div className={`text-[12px] truncate flex items-center gap-1.5 ${isOpen ? 'text-orange-200' : 'text-stone-300'}`}>
+                  {/* Sur mobile : titre (ligne 1, pleine largeur) + détails (ligne 2).
+                      Sur desktop : reste en une seule rangée fluide. */}
+                  <div className="flex-1 min-w-0">
+                    <div className={`flex items-center gap-1.5 text-[12px] ${isOpen ? 'text-orange-200' : 'text-stone-300'}`}>
                       <SourceBadge source={s.source} />
-                      {s.title || s.id}
+                      <span className="truncate">{s.title || s.id}</span>
                       {s.live?.running && <Loader2 className="w-3 h-3 animate-spin text-orange-400 shrink-0" />}
                     </div>
-                    <div className="text-[10px] text-stone-600 truncate">
-                      {s.message_count} msg · {d}
-                    </div>
+                    <div className="text-[10px] text-stone-500 mt-0.5">{s.message_count} msg · {d}</div>
                   </div>
                   {!selectMode && (
                       <button
                       onClick={(e) => { e.stopPropagation(); deleteOne(s.id); }}
                       title="Supprimer cette session"
-                      className="ml-auto shrink-0 text-stone-600 hover:text-red-400 transition-colors"
+                      className="ml-auto shrink-0 self-center text-stone-600 hover:text-red-400 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -1940,6 +2072,17 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
             })}
           </div>
         </div>
+
+        {/* Bouton flottant ouverture Historique (mobile/tablette uniquement) */}
+        {isMobile && !historyOpen && (
+          <button
+            onClick={() => setHistoryOpen(true)}
+            title="Historique (glisser la moitié droite)"
+            className="md:hidden fixed right-2 bottom-24 z-40 flex items-center justify-center w-11 h-11 rounded-full bg-stone-800 text-stone-300 border border-stone-700 shadow-lg active:bg-stone-700"
+          >
+            <PanelRight className="w-5 h-5" />
+          </button>
+        )}
       </div>
     </div>
   );

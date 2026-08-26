@@ -9205,7 +9205,27 @@ def _read_native_sessions(agent: str):
                 else:
                     # tool / system: on les masque de l'affichage MC
                     continue
-                text = m.get("content") or m.get("text") or ""
+                # FIX (2026-08-26): le store natif Hermes separe le texte
+                # final (`content`) du fil de travail/reflexion (`reasoning`
+                # ou `reasoning_content`). Pour de nombreux agents (ex.
+                # recherche) TOUTES les etapes intermediaires n'ont QUE du
+                # reasoning et un `content` VIDE -> la bulle agent apparaissait
+                # vide dans MC ("petits traits, marque AGENT, rien dedans")
+                # alors que le dashboard natif Hermes affiche tout.
+                # On renvoie le `content` final en clair, et on emballe le
+                # `reasoning` dans des balises <thinking>...</thinking> pour
+                # que le FRONT (AgentMessageBody / parseAgentText) le place
+                # dans sa section repliable "Reflexion / commandes (N)"
+                # (clic sur le ▸). Comme ca : le rapport final reste toujours
+                # visible, et le fil de travail est deroulable si besoin.
+                _content = m.get("content") or ""
+                _reasoning = m.get("reasoning_content") or m.get("reasoning") or ""
+                if _reasoning:
+                    # Emballe le reasoning en balise thinking reconnue du front.
+                    _think = "<thinking>\n" + _reasoning + "\n</thinking>"
+                    text = (_content + "\n\n" + _think) if _content else _think
+                else:
+                    text = _content or ""
                 msgs.append({
                     "role": disp,
                     "text": text,

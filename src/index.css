@@ -53,6 +53,13 @@ html.light {
   --color-stone-800: #d6d3d1;
   --color-stone-900: #ffffff;
   --color-stone-950: #f5f5f4;
+  /* Orange clairs -> tons fonces en theme clair (fond clair) pour rester
+     lisibles : le texte user (text-orange-100), les puces/labels
+     (text-orange-400 / text-orange-500) etaient illisibles avant. */
+  --color-orange-100: #9a3412;
+  --color-orange-300: #c2410c;
+  --color-orange-400: #c2410c;
+  --color-orange-500: #9a3412;
   color-scheme: light;
 }
 

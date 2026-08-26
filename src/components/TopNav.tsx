@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { Menu } from 'lucide-react';
 import { TabId } from '../types';
 import {
   RotateCw,
@@ -19,10 +20,17 @@ import dashboardVersion from '../../VERSION?raw';
 interface TopNavProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
+  liveOpen: boolean;
+  setLiveOpen: (v: boolean | ((v: boolean) => boolean)) => void;
 }
 
-export const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange }) => {
+export const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange, liveOpen, setLiveOpen }) => {
   const [collapsed, setCollapsed] = useState(false);
+  // Sur mobile/tablette (< md) : la barre d'onglets devient un panneau
+  // coulissant masqué par défaut, ouvert via un bouton hamburger flottant
+  // en haut à gauche (cf. bouton ci-dessous). Sur desktop (>= md) la
+  // sidebar classique reste telle quelle.
+  const [navOpen, setNavOpen] = useState(false);
   // Theme dark/light (persiste dans localStorage `mc_theme`).
   const [theme, toggleTheme] = useTheme();
 
@@ -86,6 +94,24 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange }) => {
   const actionBtn = 'flex items-center gap-3 px-3 py-2.5 text-xs font-medium tracking-wide rounded-md text-stone-400 hover:text-stone-200 hover:bg-stone-900/50 transition-colors w-full text-left';
 
   return (
+    <>
+    {/* Bouton hamburger flottant (mobile/tablette uniquement) : ouvre la barre d'onglets. */}
+    <button
+      onClick={() => setNavOpen(true)}
+      title="Onglets"
+      className="md:hidden fixed top-3 left-3 z-50 flex items-center justify-center w-11 h-11 rounded-full bg-stone-800 text-stone-200 border border-stone-700 shadow-lg active:bg-stone-700"
+    >
+      <Menu className="w-5 h-5" />
+    </button>
+
+    {/* Voile derrière la barre ouverte (mobile) */}
+    {navOpen && (
+      <div
+        className="md:hidden fixed inset-0 z-40 bg-black/60"
+        onClick={() => setNavOpen(false)}
+      />
+    )}
+
     <nav
       className={`
         flex flex-row flex-wrap w-full h-auto items-center gap-2 px-3 py-2
@@ -94,6 +120,8 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange }) => {
         border-b md:border-b-0 md:border-r border-stone-800
         bg-stone-950/80 backdrop-blur-md
         ${collapsed ? 'md:w-20 md:overflow-x-hidden' : 'md:w-56'}
+        max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:w-64 max-md:max-w-[80vw] max-md:z-50 max-md:flex-col max-md:flex-nowrap max-md:overflow-y-auto max-md:shadow-2xl max-md:transform max-md:transition-transform max-md:duration-200 max-md:ease-out
+        ${navOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'}
       `}
     >
       {/* Logo + bouton de rétractation (colonne à gauche, toujours) + titre à droite */}
@@ -190,7 +218,12 @@ export const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange }) => {
           <RotateCw className="w-5 h-5 shrink-0" />
           {!collapsed && <span className="hidden md:inline">Redemarrer</span>}
         </button>
+        <button onClick={() => setLiveOpen((v) => !v)} title="Supervision temps réel" className={actionBtn}>
+          <Activity className="w-5 h-5 shrink-0" />
+          {!collapsed && <span className="hidden md:inline">Live</span>}
+        </button>
       </div>
     </nav>
+    </>
   );
 };
