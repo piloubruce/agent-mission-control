@@ -408,7 +408,14 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
     }
     const key = normProv(provider);
     let base: { id: string; display_name?: string; description?: string }[] = [];
-    if (scanList.length) {
+    // mc-provider: virtual combos live in catalog, not scanList
+    if (provider === 'mc-provider') {
+      base = (providerMeta?.models || []).map((m: { id: string; description?: string }) => ({
+        id: m.id,
+        display_name: m.id,
+        description: m.description,
+      }));
+    } else if (scanList.length) {
       const seen = new Set<string>();
       for (const r of scanList) {
         const pk = normProv(r.provider || '');
@@ -504,10 +511,11 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
       }));
     list = filterModels(list, filter);
     // v1.17.141 - Filtres capacites Vision/Raison/Tools (AND).
+    // mc-provider: virtual combos — skip capacity filter (no scan data).
     if (capFilter.vision || capFilter.reasoning || capFilter.tools) {
       list = list.filter((m) => {
         const res = scanIdx[scanKey(normProv(provider), m.id)];
-        if (!res) return false;
+        if (!res) return provider === 'mc-provider';  // virtual: keep when no scan data
         return (!capFilter.vision || res.vision_supported) &&
                (!capFilter.reasoning || res.reasoning_supported) &&
                (!capFilter.tools || res.tools_supported);
@@ -517,6 +525,7 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
     // v2026-08-11 — tri par tokens/sec decroissant (non mesures -> fin)
     if (sortTps) {
       __sorted2 = [...__sorted2].sort((a, b) => {
+        if (provider === 'mc-provider') return 0;  // no scan data for virtual combos
         const ta = scanIdx[scanKey(normProv(provider), a.id)]?.tokens_per_sec ?? -1;
         const tb = scanIdx[scanKey(normProv(provider), b.id)]?.tokens_per_sec ?? -1;
         return tb - ta;
@@ -651,14 +660,16 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
                 <option value={ALL_PROVIDERS}>Tous les providers ({allModels.length} modèles)</option>
                 {Object.entries(catalog?.providers || {})
                   .filter(([k, p]) =>
-                    !(p.count === 0) &&                                    // masque TOUT provider sans modele dispo
-                    !p.all_blacklisted &&                                  // masque si TOUT blackliste
-                    scanProviders[k] === true                              // SEULEMENT providers cochés
+                    (k === 'mc-provider' || !(p.count === 0)) &&     // mc-provider: toujours visible (vide = pas encore de combo)
+                    !p.all_blacklisted &&                              // masque si TOUT blackliste
+                    (k === 'mc-provider' || scanProviders[k] === true)   // mc-provider: toujours actif
                   )
                   .map(([key, p]) => {
-                    const okCount = scanList.filter(
-                      (r) => normProv(r.provider) === normProv(key) && r.ok === true && !(blacklist[key] || []).includes(r.model)
-                    ).length;
+                    const okCount = key === 'mc-provider'
+                      ? (p.models || []).length   // virtual combos: use provider count
+                      : scanList.filter(
+                          (r) => normProv(r.provider) === normProv(key) && r.ok === true && !(blacklist[key] || []).includes(r.model)
+                        ).length;
                     return (
                       <option key={key} value={key}>
                         {p.display_name || key} · {okCount}

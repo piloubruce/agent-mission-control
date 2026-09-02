@@ -150,6 +150,9 @@ export const ConfigTab: React.FC = () => {
   const [virtualCombos, setVirtualCombos] = useState<Array<{name: string; models: {provider: string; model: string}[]}>>([]);
   const [comboName, setComboName] = useState('');
   const [selectedScanModels, setSelectedScanModels] = useState<Set<string>>(new Set());
+  // Filtres pour la liste des modèles scannés
+  const [scanFilter, setScanFilter] = useState('');
+  const [capFilter, setCapFilter] = useState({ vision: false, reasoning: false, tools: false });
 
   // --- chargement initial (GET /api/config) ---------------------------
   // Source de verite = SERVEUR. L'utilisateur a demande explicitement que
@@ -255,6 +258,11 @@ const reload = async () => {
         const hasCfg = Object.keys(cfg).length > 0;
         const next: Record<string, boolean> = {};
         for (const key of Object.keys(cat.providers || {})) {
+          // mc-provider is always visible/enabled (virtual combos, not scanable)
+          if (key === 'mc-provider') {
+            next[key] = true;
+            continue;
+          }
           next[key] = hasCfg ? cfg[key] === true : true;
         }
         if (!cancelled) {
@@ -819,7 +827,50 @@ useEffect(() => {
 
         {/* Liste des modèles scannés (OK seulement) avec checkboxes */}
         <div className="mb-4">
-          <h4 className="text-xs text-stone-500 uppercase mb-2">Modèles scannés disponibles (OK)</h4>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs text-stone-500 uppercase">Modèles scannés disponibles (OK)</h4>
+          </div>
+          {/* Filtres: nom + capacités V/R/T */}
+          <div className="flex flex-wrap gap-2 items-end mb-2">
+            <div className="flex flex-col flex-1 min-w-[200px]">
+              <input
+                type="text"
+                value={scanFilter}
+                onChange={(e) => setScanFilter(e.target.value)}
+                placeholder="Filtrer par nom de modèle..."
+                className="px-3 py-1.5 bg-stone-900 border border-stone-700 rounded-md text-sm text-stone-200 focus:outline-none focus:border-orange-600"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <label className="flex items-center gap-0.5">
+                <input
+                  type="checkbox"
+                  checked={capFilter.vision}
+                  onChange={(e) => setCapFilter({ ...capFilter, vision: e.target.checked })}
+                  className="accent-orange-600 w-3 h-3"
+                />
+                <span className="text-xs text-stone-400">V</span>
+              </label>
+              <label className="flex items-center gap-0.5">
+                <input
+                  type="checkbox"
+                  checked={capFilter.reasoning}
+                  onChange={(e) => setCapFilter({ ...capFilter, reasoning: e.target.checked })}
+                  className="accent-orange-600 w-3 h-3"
+                />
+                <span className="text-xs text-stone-400">R</span>
+              </label>
+              <label className="flex items-center gap-0.5">
+                <input
+                  type="checkbox"
+                  checked={capFilter.tools}
+                  onChange={(e) => setCapFilter({ ...capFilter, tools: e.target.checked })}
+                  className="accent-orange-600 w-3 h-3"
+                />
+                <span className="text-xs text-stone-400">T</span>
+              </label>
+            </div>
+          </div>
           {scannedModels.length === 0 ? (
             <p className="text-xs text-stone-500 italic">Aucun modèle scanné. Lancez un scan dans l'onglet Scan.</p>
           ) : (
@@ -831,6 +882,18 @@ useEffect(() => {
                   if (!seen.has(`${r.provider}::${r.model}`)) acc.push(r);
                   return acc;
                 }, [])
+                .filter((r) => {
+                  // Filtre par nom (provider + model)
+                  if (scanFilter.trim()) {
+                    const fullName = `${r.provider} / ${r.model}`.toLowerCase();
+                    if (!fullName.includes(scanFilter.toLowerCase())) return false;
+                  }
+                  // Filtre par capacités
+                  if (capFilter.vision && !r.vision_supported) return false;
+                  if (capFilter.reasoning && !r.reasoning_supported) return false;
+                  if (capFilter.tools && !r.tools_supported) return false;
+                  return true;
+                })
                 .sort((a, b) => {
                   const ta = a.tokens_per_sec ?? 0;
                   const tb = b.tokens_per_sec ?? 0;
@@ -860,6 +923,12 @@ useEffect(() => {
                           ({r.tokens_per_sec} tok/s)
                         </span>
                       )}
+                      {/* Capacités V/R/T */}
+                      <span className="flex items-center gap-0.5 text-xs font-mono">
+                        <span className={r.vision_supported ? 'text-emerald-400' : 'text-stone-600'}>V</span>
+                        <span className={r.reasoning_supported ? 'text-emerald-400' : 'text-stone-600'}>R</span>
+                        <span className={r.tools_supported ? 'text-emerald-400' : 'text-stone-600'}>T</span>
+                      </span>
                     </label>
                   );
                 })}

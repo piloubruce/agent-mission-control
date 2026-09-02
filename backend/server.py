@@ -2318,37 +2318,33 @@ def read_model_catalog(provider=None):
     except Exception:
         pass
 
-    # 6) Virtual combos provider ("mc-provider") — aggregates user-created virtual
-    #    models from mc_config.json. Each entry = {name, provider, model, ...}.
-    #    This mirrors OmniRoute's virtual model concept but uses Hermes MC's own
-    #    scanned/tested models as the source of truth (per the user's request to
-    #    build reliable virtual models from scan results rather than OmniRoute's
-    #    unreliable live probes).
+    # 6) Virtual combos provider ("mc-provider") — always exposed so the
+    #    ModelSelector shows it even when empty (user can browse/create).
+    #    Each entry = {name, models:[{provider,model}]}. Models come from
+    #    mc_config.json virtual_combos (populated via ConfigTab).
     _mc_cfg = mc_backend.load_config()
     _vcs = _mc_cfg.get("virtual_combos", [])
-    if isinstance(_vcs, list) and _vcs:
-        _mc_models = []
+    _mc_models = []
+    if isinstance(_vcs, list):
         for _vc in _vcs:
             if isinstance(_vc, dict) and _vc.get("name"):
                 _vmodels = _vc.get("models", [])
+                _desc_parts = []
                 if isinstance(_vmodels, list):
-                    _desc_parts = []
                     for _vm in _vmodels:
                         if isinstance(_vm, dict) and _vm.get("provider") and _vm.get("model"):
                             _desc_parts.append(f"{_vm['provider']}/{_vm['model']}")
                         elif isinstance(_vm, str):
                             _desc_parts.append(_vm)
-                    _desc = " | ".join(_desc_parts) if _desc_parts else ""
-                else:
-                    _desc = ""
+                _desc = " | ".join(_desc_parts) if _desc_parts else ""
                 _mc_models.append({"id": _vc["name"], "description": _desc})
-        if _mc_models:
-            providers["mc-provider"] = {
-                "display_name": "MC Provider",
-                "freeform": False,
-                "count": len(_mc_models),
-                "models": _mc_models,
-            }
+    # Always expose mc-provider (empty when no combos yet)
+    providers["mc-provider"] = {
+        "display_name": "MC Provider",
+        "freeform": False,
+        "count": len(_mc_models),
+        "models": _mc_models,
+    }
 
     result = {"providers": _annotate_blacklist(providers)}
     _CATALOG_CACHE["data"] = result
