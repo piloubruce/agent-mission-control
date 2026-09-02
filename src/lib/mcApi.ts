@@ -67,7 +67,11 @@ export async function setConfig(
       body: JSON.stringify(cfg),
     });
     const ct = res.headers.get('content-type') || '';
-    if (res.ok && ct.includes('application/json')) return { ok: true, source: 'server' };
+    if (res.ok && ct.includes('application/json')) {
+      // Refresh model catalog so mc-provider picks up new virtual combos
+      try { await apiFetch('/api/models/refresh'); } catch { /* ignore */ }
+      return { ok: true, source: 'server' };
+    }
     return { ok: false, source: 'local', error: `HTTP ${res.status}` };
   } catch (e) {
     return { ok: false, source: 'local', error: e instanceof Error ? e.message : String(e) };

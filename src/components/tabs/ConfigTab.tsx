@@ -153,6 +153,8 @@ export const ConfigTab: React.FC = () => {
   // Filtres pour la liste des modèles scannés
   const [scanFilter, setScanFilter] = useState('');
   const [capFilter, setCapFilter] = useState({ vision: false, reasoning: false, tools: false });
+  // Édition d'un combo (nom + sélection de modèles)
+  const [editingVirtCombo, setEditingVirtCombo] = useState<{idx: number; name: string; models: Set<string> | null} | null>(null);
 
   // --- chargement initial (GET /api/config) ---------------------------
   // Source de verite = SERVEUR. L'utilisateur a demande explicitement que
@@ -814,15 +816,35 @@ useEffect(() => {
                 const [provider, model] = k.split('::');
                 return { provider, model };
               });
-              setVirtualCombos([...virtualCombos, { name: comboName.trim(), models }]);
+              const isEditing = editingVirtCombo !== null;
+              const nextCombos = isEditing
+                ? virtualCombos.map((c, i) => i === editingVirtCombo!.idx ? { name: comboName.trim(), models } : c)
+                : [...virtualCombos, { name: comboName.trim(), models }];
+              setVirtualCombos(nextCombos);
               setComboName('');
               setSelectedScanModels(new Set());
-              setMsg({ kind: 'ok', text: `Modèle virtuel "${comboName.trim()}" créé (pensez à Enregistrer).` });
+              setEditingVirtCombo(null);
+              setMsg({ kind: 'ok', text: isEditing
+                ? `Modèle virtuel "${comboName.trim()}" mis à jour (pensez à Enregistrer).`
+                : `Modèle virtuel "${comboName.trim()}" créé (pensez à Enregistrer).` });
+              void persist(rows, order, false);
             }}
-            className={`${btn} bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-2`}
-          >
-            Créer
+            className={`${btn} bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-2`}>
+            {editingVirtCombo !== null ? 'Sauvegarder' : 'Créer'}
           </button>
+          {editingVirtCombo !== null && (
+            <button
+              onClick={() => {
+                setEditingVirtCombo(null);
+                setComboName('');
+                setSelectedScanModels(new Set());
+                setMsg({ kind: 'ok', text: 'Édition annulée.' });
+              }}
+              className={`${btn} bg-stone-700 hover:bg-stone-600 text-stone-300 flex items-center gap-2`}
+            >
+              Annuler
+            </button>
+          )}
         </div>
 
         {/* Liste des modèles scannés (OK seulement) avec checkboxes */}
@@ -953,14 +975,14 @@ useEffect(() => {
                 <div className="flex gap-2">
                   <button
                     onClick={() => {
-                      const comboStr = combo.models.map((m) => `${m.provider}::${m.model}`).join('\n');
-                      const newName = prompt('Nouveau nom pour le modèle virtuel ?', combo.name);
-                      if (newName !== null && newName.trim()) {
-                        const next = [...virtualCombos];
-                        next[i].name = newName.trim();
-                        setVirtualCombos(next);
-                        setMsg({ kind: 'ok', text: `Combo renommé en "${newName.trim()}".` });
+                      // Démarre l'édition: charge le nom + les modèles du combo dans le formulaire de création
+                      const modelSet = new Set<string>();
+                      for (const m of combo.models) {
+                        modelSet.add(`${m.provider}::${m.model}`);
                       }
+                      setEditingVirtCombo({ idx: i, name: combo.name, models: modelSet });
+                      setComboName(combo.name);
+                      setSelectedScanModels(modelSet);
                     }}
                     className="text-xs text-orange-400 hover:text-orange-300"
                   >
