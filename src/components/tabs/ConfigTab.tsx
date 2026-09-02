@@ -21,7 +21,7 @@ import {
 import { getConfig, setConfig } from '../../lib/mcApi';
 import type { CfgSource } from '../../lib/mcApi';
 import { createBackup, listBackups, downloadBackupUrl, restoreBackup } from '../../lib/mcApi';
-import { getModelCatalog, refreshModelCatalog, type ModelCatalog } from '../../api';
+import { getModelCatalog, refreshModelCatalog, getScanResults, type ModelCatalog, type ScanModelResult } from '../../api';
 
 
 // Row state pour l'édition des raccourcis
@@ -144,11 +144,12 @@ export const ConfigTab: React.FC = () => {
   const [scanProvRefreshing, setScanProvRefreshing] = useState(false);
   const [backupList, setBackupList] = useState<Array<{name: string; size: number; mtime: number}>>([]);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Modèles virtuels / combos (créés via le champ ci-dessous)
-  const [virtualCombos, setVirtualCombos] = useState<Array<{name: string; model: string; provider: string}>>([]);
+  // Modèles scannés pour la création de combos virtuels
+  const [scannedModels, setScannedModels] = useState<ScanModelResult[]>([]);
+  // Modèles virtuels / combos (créés depuis scans)
+  const [virtualCombos, setVirtualCombos] = useState<Array<{name: string; models: {provider: string; model: string}[]}>>([]);
   const [comboName, setComboName] = useState('');
-  const [comboProvider, setComboProvider] = useState('');
-  const [comboModel, setComboModel] = useState('');
+  const [selectedScanModels, setSelectedScanModels] = useState<Set<string>>(new Set());
 
   // --- chargement initial (GET /api/config) ---------------------------
   // Source de verite = SERVEUR. L'utilisateur a demande explicitement que
@@ -168,7 +169,7 @@ const reload = async () => {
     }
 
     // Modèles virtuels / combos
-    const vcs = Array.isArray(config.virtual_combos) ? config.virtual_combos as Array<{name: string; model: string; provider: string}> : [];
+    const vcs = Array.isArray(config.virtual_combos) ? config.virtual_combos as Array<{name: string; models: {provider: string; model: string}[]}> : [];
     setVirtualCombos(vcs);
 
     if (source === 'server') {
@@ -216,6 +217,19 @@ const reload = async () => {
 };
 
   useEffect(() => { void reload(); }, []);
+
+  // --- Chargement des modèles scannés (GET /api/scan/results) ------------
+  useEffect(() => {
+    let cancelled = false;
+    getScanResults()
+      .then((r) => {
+        if (!cancelled) setScannedModels(r.results ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setScannedModels([]);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   // --- Providers visibles dans Scan ------------------------------------
   // Charge le catalogue (GET /api/models) puis la config scan_providers.
@@ -762,58 +776,97 @@ useEffect(() => {
       <div className={card}>
         <h3 className="text-stone-300 font-medium mb-4">Modèles Virtuels Créés</h3>
         <p className="text-xs text-stone-500 mb-4">
-          Créez des modèles virtuels en combinant un provider, un modèle et un nom personnalisé.
-          Cliquez « Enregistrer » pour les persister.
+          Agrégez des modèles scannés (Scan) sous un nom virtuel utilisable sur tous les agents.
+          Sélectionnez des modèles dans la liste ci-dessous, donnez un nom, puis Enregistrez.
         </p>
+
         {/* Formulaire de création */}
         <div className="flex flex-wrap gap-3 items-end mb-4">
-          <div className="flex flex-col flex-1 min-w-[140px]">
-            <label className="text-xs text-stone-500 mb-1">Nom</label>
+          <div className="flex flex-col flex-1 min-w-[180px]">
+            <label className="text-xs text-stone-500 mb-1">Nom du modèle virtuel</label>
             <input
               type="text"
               value={comboName}
               onChange={(e) => setComboName(e.target.value)}
-              placeholder="ex: test"
-              className="px-3 py-1.5 bg-stone-900 border border-stone-700 rounded-md text-sm text-stone-200 focus:outline-none focus:border-orange-600"
-            />
-          </div>
-          <div className="flex flex-col flex-1 min-w-[140px]">
-            <label className="text-xs text-stone-500 mb-1">Provider</label>
-            <input
-              type="text"
-              value={comboProvider}
-              onChange={(e) => setComboProvider(e.target.value)}
-              placeholder="ex: freellmapi"
-              className="px-3 py-1.5 bg-stone-900 border border-stone-700 rounded-md text-sm text-stone-200 focus:outline-none focus:border-orange-600"
-            />
-          </div>
-          <div className="flex flex-col flex-1 min-w-[160px]">
-            <label className="text-xs text-stone-500 mb-1">Modèle</label>
-            <input
-              type="text"
-              value={comboModel}
-              onChange={(e) => setComboModel(e.target.value)}
-              placeholder="ex: nemotron-4-340b"
+              placeholder="ex: Best Coding"
               className="px-3 py-1.5 bg-stone-900 border border-stone-700 rounded-md text-sm text-stone-200 focus:outline-none focus:border-orange-600"
             />
           </div>
           <button
             onClick={() => {
-              if (!comboName.trim() || !comboProvider.trim() || !comboModel.trim()) {
-                setMsg({ kind: 'warn', text: 'Tous les champs sont requis.' });
+              if (!comboName.trim()) {
+                setMsg({ kind: 'warn', text: 'Indiquez un nom pour le modèle virtuel.' });
                 return;
               }
-              setVirtualCombos([...virtualCombos, { name: comboName.trim(), provider: comboProvider.trim(), model: comboModel.trim() }]);
+              if (selectedScanModels.size === 0) {
+                setMsg({ kind: 'warn', text: 'Sélectionnez au moins un modèle scanné.' });
+                return;
+              }
+              const models = Array.from(selectedScanModels).map((k) => {
+                const [provider, model] = k.split('::');
+                return { provider, model };
+              });
+              setVirtualCombos([...virtualCombos, { name: comboName.trim(), models }]);
               setComboName('');
-              setComboProvider('');
-              setComboModel('');
-              setMsg({ kind: 'ok', text: `Combo "${comboName.trim()}" ajouté (pensez à Enregistrer).` });
+              setSelectedScanModels(new Set());
+              setMsg({ kind: 'ok', text: `Modèle virtuel "${comboName.trim()}" créé (pensez à Enregistrer).` });
             }}
             className={`${btn} bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-2`}
           >
-            Ajouter
+            Créer
           </button>
         </div>
+
+        {/* Liste des modèles scannés (OK seulement) avec checkboxes */}
+        <div className="mb-4">
+          <h4 className="text-xs text-stone-500 uppercase mb-2">Modèles scannés disponibles (OK)</h4>
+          {scannedModels.length === 0 ? (
+            <p className="text-xs text-stone-500 italic">Aucun modèle scanné. Lancez un scan dans l'onglet Scan.</p>
+          ) : (
+            <div className="space-y-1 max-h-60 overflow-y-auto border border-stone-800 rounded-lg p-2">
+              {scannedModels
+                .filter((r) => r.ok === true && r.provider && r.model)
+                .reduce((acc: ScanModelResult[], r) => {
+                  const seen = new Set(acc.map((x) => `${x.provider}::${x.model}`));
+                  if (!seen.has(`${r.provider}::${r.model}`)) acc.push(r);
+                  return acc;
+                }, [])
+                .sort((a, b) => {
+                  const ta = a.tokens_per_sec ?? 0;
+                  const tb = b.tokens_per_sec ?? 0;
+                  return tb - ta;
+                })
+                .map((r) => {
+                  const key = `${r.provider}::${r.model}`;
+                  const checked = selectedScanModels.has(key);
+                  return (
+                    <label key={key} className="flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-stone-900/30 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const next = new Set(selectedScanModels);
+                          if (e.target.checked) next.add(key);
+                          else next.delete(key);
+                          setSelectedScanModels(next);
+                        }}
+                        className="accent-orange-600"
+                      />
+                      <span className="text-sm text-stone-300 font-mono truncate">
+                        {r.provider} / {r.model}
+                      </span>
+                      {r.tokens_per_sec && (
+                        <span className="text-xs text-stone-600">
+                          ({r.tokens_per_sec} tok/s)
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+
         {/* Liste des combos existants */}
         {virtualCombos.length === 0 ? (
           <p className="text-xs text-stone-500 italic">Aucun modèle virtuel créé.</p>
@@ -823,19 +876,39 @@ useEffect(() => {
               <div key={i} className="flex items-center justify-between bg-stone-950/60 p-3 rounded-lg border border-stone-800">
                 <div>
                   <span className="text-sm text-stone-200 font-medium">{combo.name}</span>
-                  <span className="text-xs text-stone-500 ml-2">({combo.provider} / {combo.model})</span>
+                  <span className="text-xs text-stone-500 ml-2">({combo.models.length} modèles)</span>
+                  <div className="text-xs text-stone-600 mt-1">
+                    {combo.models.map((m) => `${m.provider}/${m.model}`).join(', ')}
+                  </div>
                 </div>
-                <button
-                  onClick={() => {
-                    const next = virtualCombos.filter((_, idx) => idx !== i);
-                    setVirtualCombos(next);
-                    void persist(rows, order, false);
-                    setMsg({ kind: 'ok', text: `Combo "${combo.name}" supprimé.` });
-                  }}
-                  className="text-xs text-red-400 hover:text-red-300"
-                >
-                  Supprimer
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const comboStr = combo.models.map((m) => `${m.provider}::${m.model}`).join('\n');
+                      const newName = prompt('Nouveau nom pour le modèle virtuel ?', combo.name);
+                      if (newName !== null && newName.trim()) {
+                        const next = [...virtualCombos];
+                        next[i].name = newName.trim();
+                        setVirtualCombos(next);
+                        setMsg({ kind: 'ok', text: `Combo renommé en "${newName.trim()}".` });
+                      }
+                    }}
+                    className="text-xs text-orange-400 hover:text-orange-300"
+                  >
+                    Éditer
+                  </button>
+                  <button
+                    onClick={() => {
+                      const next = virtualCombos.filter((_, idx) => idx !== i);
+                      setVirtualCombos(next);
+                      void persist(rows, order, false);
+                      setMsg({ kind: 'ok', text: `Modèle virtuel "${combo.name}" supprimé.` });
+                    }}
+                    className="text-xs text-red-400 hover:text-red-300"
+                  >
+                    Supprimer
+                  </button>
+                </div>
               </div>
             ))}
           </div>
