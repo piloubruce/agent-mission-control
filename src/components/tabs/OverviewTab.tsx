@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApiState } from '../../api';
 import { FLEET_STATIC } from '../../types';
 import { Activity, Cpu, Database, Network, X, GripVertical, RotateCcw } from 'lucide-react';
-import { formatAny } from '../../lib/datetime';
+import { formatEpochShort } from '../../lib/datetime';
 import { useDndOrder } from '../../lib/useDndOrder';
 
 // Pill color per real agent status.
@@ -178,7 +178,7 @@ export const OverviewTab: React.FC = () => {
           )}
           {logs.slice(0, 12).map((log, i) => (
             <div key={i} className="flex items-start text-stone-400">
-              <span className="text-stone-600 w-24 shrink-0">{log.time ? formatAny(log.time) : '—'}</span>
+              <span className="text-stone-600 w-24 shrink-0">{log.time ? formatEpochShort(Number(log.time)) : '—'}</span>
               <span className={`${log.status === 'completed' ? 'text-cyan-400' : 'text-stone-400'}`}>
                 [{log.agent}] {log.task ?? '(sans description)'}
               </span>
@@ -255,7 +255,7 @@ export const OverviewTab: React.FC = () => {
               )}
               {logs.map((log, i) => (
                 <div key={i} className="flex items-start text-stone-400">
-                  <span className="text-stone-600 w-24 shrink-0">{log.time ? formatAny(log.time) : '—'}</span>
+                  <span className="text-stone-600 w-24 shrink-0">{log.time ? formatEpochShort(Number(log.time)) : '—'}</span>
                   <span className={`${log.status === 'completed' ? 'text-cyan-400' : 'text-red-400'}`}>
                     [{log.agent}] {log.task ?? '(sans description)'}
                   </span>
@@ -292,7 +292,7 @@ export const OverviewTab: React.FC = () => {
               )}
               {logs.map((log, i) => (
                 <div key={i} className="flex items-start text-stone-400">
-                  <span className="text-stone-600 w-24 shrink-0">{log.time ? formatAny(log.time) : '—'}</span>
+                  <span className="text-stone-600 w-24 shrink-0">{log.time ? formatEpochShort(Number(log.time)) : '—'}</span>
                   <span className={`${log.status === 'completed' ? 'text-cyan-400' : 'text-stone-400'}`}>
                     [{log.agent}] {log.task ?? '(sans description)'}
                   </span>

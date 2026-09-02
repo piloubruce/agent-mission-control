@@ -69,6 +69,8 @@ DEFAULT_CONFIG = {
     # v1.17.141 - ordre des cartes agents (persiste cote serveur pour etre
     # partage entre navigateurs/profils -- localStorage etait perdu en prive).
     "agents_order": [],
+    # Modèles virtuels / Combos configurés (inspiré d'OmniRoute)
+    "virtual_combos": [],
 }
 
 _CFG_LOCK = threading.Lock()
@@ -93,7 +95,27 @@ def load_config():
             data = {}
     if not isinstance(data, dict):
         data = {}
-    return _deep_merge(DEFAULT_CONFIG, data)
+    
+    # Perform the initial deep merge
+    merged_config = _deep_merge(DEFAULT_CONFIG, data)
+
+    # --- START NEW LOGIC ---
+    # Ensure custom providers are present in scan_providers.
+    # If custom_providers exist in the loaded data, and they are not already
+    # explicitly listed in scan_providers, add them with a default of 'True'
+    # (enabled). This ensures they appear in the dashboard scan configuration.
+    
+    custom_providers_section = data.get("custom_providers", {})
+    scan_providers_setting = merged_config.get("scan_providers", {}) # This is the dictionary we need to update
+
+    for provider_name in custom_providers_section:
+        if provider_name not in scan_providers_setting:
+            scan_providers_setting[provider_name] = True # Enable by default if not listed
+
+    merged_config["scan_providers"] = scan_providers_setting
+    # --- END NEW LOGIC ---
+    
+    return merged_config
 
 
 def save_config(patch):
@@ -109,12 +131,12 @@ def save_config(patch):
     if not isinstance(patch, dict):
         raise ValueError("body JSON objet attendu")
     current = load_config()
-    for key in ("shortcuts", "theme"):
-        if key in patch and isinstance(patch[key], dict):
+    for key in ("shortcuts", "theme", "virtual_combos"):
+        if key in patch and (isinstance(patch[key], dict) or isinstance(patch[key], list)):
             current[key] = patch[key]
     # Autres cles (terminal, files, ...) : merge conservateur
     for key, value in patch.items():
-        if key not in ("shortcuts", "theme"):
+        if key not in ("shortcuts", "theme", "virtual_combos"):
             current[key] = value
     merged = current
     with _CFG_LOCK:

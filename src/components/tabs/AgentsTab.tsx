@@ -3,7 +3,7 @@ import { useApiState } from '../../api';
 import { getAgentsOrder, setAgentsOrder } from '../../api';
 import { FLEET_STATIC } from '../../types';
 import { Zap } from 'lucide-react';
-import { ModelSelector } from '../ModelSelector';
+import { ModelSelector } from './ModelSelector';
 import { MultiAgentModelModal } from '../MultiAgentModelModal';
 import { CreateAgentModal } from '../CreateAgentModal';
 import { SkillManagerModal } from '../SkillManagerModal';
@@ -236,7 +236,14 @@ const AgentCard: React.FC<{
   const usage = live?.tokenUsage ?? {};
   const rate = live?.tokenRate ?? {};
   const activeModel = modelLabel ?? undefined;
-  const u = usage[activeModel ?? ''] ?? { day: 0, week: 0, month: 0 };
+  
+  // Calculate total token usage across all models if activeModel is not defined
+  // or use the active model's usage if it exists
+  const u = activeModel ? (usage[activeModel] ?? { day: 0, week: 0, month: 0 }) : {
+    day: Object.values(usage).reduce((sum, modelUsage: any) => sum + (modelUsage?.day ?? 0), 0),
+    week: Object.values(usage).reduce((sum, modelUsage: any) => sum + (modelUsage?.week ?? 0), 0),
+    month: Object.values(usage).reduce((sum, modelUsage: any) => sum + (modelUsage?.month ?? 0), 0)
+  };
   const [liveRate, setLiveRate] = useState<number | null>(
     activeModel != null ? (rate[activeModel] ?? null) : null,
   );

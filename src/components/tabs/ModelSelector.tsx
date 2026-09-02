@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { filterModels } from '../lib/filterModels';
+import { filterModels } from '../../lib/filterModels';
 import {
   getAgentModel,
   getModelCatalog,
@@ -20,10 +20,10 @@ import {
   type ScanModelResult,
   type ModelScore,
   type ScanStatus,
-} from '../api';
+} from '../../api';
 import { Cpu, Zap, Check, Ban, Eye, Brain, Wrench } from 'lucide-react';
-import { toggleFav, favKey, sortFavFirst } from '../modelFavorites';
-import { getMcFavs } from '../api';
+import { toggleFav, favKey, sortFavFirst } from '../../modelFavorites';
+import { getMcFavs } from '../../api';
 
 const ALL_PROVIDERS = '__all__';
 

@@ -1839,7 +1839,7 @@ export const MessagesTab: React.FC<{ initialAgent?: string }> = ({ initialAgent 
                   const hasScroll = el ? el.scrollHeight - el.clientHeight > BOTTOM_THRESHOLD : false;
                   if (!hasScroll) return null;
                   return (
-                    <div className="pointer-events-none sticky bottom-3 right-3 flex justify-end items-center gap-2 mr-2 mb-2 z-20">
+                    <div className="pointer-events-none fixed inset-x-0 bottom-20 flex justify-center items-center gap-2 z-20">
                       {!atTop && (
                         <button
                           type="button"

@@ -144,6 +144,11 @@ export const ConfigTab: React.FC = () => {
   const [scanProvRefreshing, setScanProvRefreshing] = useState(false);
   const [backupList, setBackupList] = useState<Array<{name: string; size: number; mtime: number}>>([]);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Modèles virtuels / combos (créés via le champ ci-dessous)
+  const [virtualCombos, setVirtualCombos] = useState<Array<{name: string; model: string; provider: string}>>([]);
+  const [comboName, setComboName] = useState('');
+  const [comboProvider, setComboProvider] = useState('');
+  const [comboModel, setComboModel] = useState('');
 
   // --- chargement initial (GET /api/config) ---------------------------
   // Source de verite = SERVEUR. L'utilisateur a demande explicitement que
@@ -161,6 +166,10 @@ const reload = async () => {
     if (config.theme) {
       document.documentElement.dataset.theme = config.theme;
     }
+
+    // Modèles virtuels / combos
+    const vcs = Array.isArray(config.virtual_combos) ? config.virtual_combos as Array<{name: string; model: string; provider: string}> : [];
+    setVirtualCombos(vcs);
 
     if (source === 'server') {
       // Ordre serveur (hotkey_order) si present
@@ -339,7 +348,7 @@ const reload = async () => {
     for (const [combo, tab] of Object.entries(map)) {
       shortcuts[combo] = tab;
     }
-    const payload = { theme, shortcuts, hotkey_order: nextOrder };
+    const payload = { theme, shortcuts, hotkey_order: nextOrder, virtual_combos: virtualCombos };
     const r = await setConfig(payload);
     setSource(r.source);
     if (showMsg) {
@@ -749,10 +758,89 @@ useEffect(() => {
         </div>
       </div>
 
-
-
-
-
+      {/* --- Modèles Virtuels / Combos --- */}
+      <div className={card}>
+        <h3 className="text-stone-300 font-medium mb-4">Modèles Virtuels Créés</h3>
+        <p className="text-xs text-stone-500 mb-4">
+          Créez des modèles virtuels en combinant un provider, un modèle et un nom personnalisé.
+          Cliquez « Enregistrer » pour les persister.
+        </p>
+        {/* Formulaire de création */}
+        <div className="flex flex-wrap gap-3 items-end mb-4">
+          <div className="flex flex-col flex-1 min-w-[140px]">
+            <label className="text-xs text-stone-500 mb-1">Nom</label>
+            <input
+              type="text"
+              value={comboName}
+              onChange={(e) => setComboName(e.target.value)}
+              placeholder="ex: test"
+              className="px-3 py-1.5 bg-stone-900 border border-stone-700 rounded-md text-sm text-stone-200 focus:outline-none focus:border-orange-600"
+            />
+          </div>
+          <div className="flex flex-col flex-1 min-w-[140px]">
+            <label className="text-xs text-stone-500 mb-1">Provider</label>
+            <input
+              type="text"
+              value={comboProvider}
+              onChange={(e) => setComboProvider(e.target.value)}
+              placeholder="ex: freellmapi"
+              className="px-3 py-1.5 bg-stone-900 border border-stone-700 rounded-md text-sm text-stone-200 focus:outline-none focus:border-orange-600"
+            />
+          </div>
+          <div className="flex flex-col flex-1 min-w-[160px]">
+            <label className="text-xs text-stone-500 mb-1">Modèle</label>
+            <input
+              type="text"
+              value={comboModel}
+              onChange={(e) => setComboModel(e.target.value)}
+              placeholder="ex: nemotron-4-340b"
+              className="px-3 py-1.5 bg-stone-900 border border-stone-700 rounded-md text-sm text-stone-200 focus:outline-none focus:border-orange-600"
+            />
+          </div>
+          <button
+            onClick={() => {
+              if (!comboName.trim() || !comboProvider.trim() || !comboModel.trim()) {
+                setMsg({ kind: 'warn', text: 'Tous les champs sont requis.' });
+                return;
+              }
+              setVirtualCombos([...virtualCombos, { name: comboName.trim(), provider: comboProvider.trim(), model: comboModel.trim() }]);
+              setComboName('');
+              setComboProvider('');
+              setComboModel('');
+              setMsg({ kind: 'ok', text: `Combo "${comboName.trim()}" ajouté (pensez à Enregistrer).` });
+            }}
+            className={`${btn} bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-2`}
+          >
+            Ajouter
+          </button>
+        </div>
+        {/* Liste des combos existants */}
+        {virtualCombos.length === 0 ? (
+          <p className="text-xs text-stone-500 italic">Aucun modèle virtuel créé.</p>
+        ) : (
+          <div className="space-y-2">
+            {virtualCombos.map((combo, i) => (
+              <div key={i} className="flex items-center justify-between bg-stone-950/60 p-3 rounded-lg border border-stone-800">
+                <div>
+                  <span className="text-sm text-stone-200 font-medium">{combo.name}</span>
+                  <span className="text-xs text-stone-500 ml-2">({combo.provider} / {combo.model})</span>
+                </div>
+                <button
+                  onClick={() => {
+                    const next = virtualCombos.filter((_, idx) => idx !== i);
+                    setVirtualCombos(next);
+                    void persist(rows, order, false);
+                    setMsg({ kind: 'ok', text: `Combo "${combo.name}" supprimé.` });
+                  }}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  Supprimer
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       {/* --- Bas : Sauvegarde | Enregistrer | Config brute (3 colonnes) --- */}
       {msg && (
         <div className={`flex items-start gap-2 text-sm rounded-xl px-4 py-3 border mb-6 ${
