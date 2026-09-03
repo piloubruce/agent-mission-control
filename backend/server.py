@@ -1207,13 +1207,57 @@ def set_agent_model(agent: str, provider: str, model: str, fallbacks=None):
             base_url = entry.get("base_url", "")
             api_key = entry.get("api_key", "")
         else:
-            # Check if a custom provider matches as a prefix (e.g. "nvidia" → "nvidia-direct")
-            for cp_name, cp_entry in cust.items():
-                if cp_name.startswith(provider.lower()):
-                    provider = cp_name
-                    base_url = cp_entry.get("base_url", "")
-                    api_key = cp_entry.get("api_key", "")
-                    break
+            # mc-provider: virtual model provider — resolve via first model in combo
+            # as the primary provider, with remaining models as fallbacks.
+            # This avoids needing OmniRoute combo sync (model IDs differ between
+            # MC scan and OmniRoute catalog). Hermes Agent's native fallback
+            # mechanism handles failover.
+            if provider.lower() == "mc-provider":
+                _cfg = mc_backend.load_config()
+                _vcs = _cfg.get("virtual_combos", [])
+                _combo = None
+                for _vc in _vcs:
+                    if isinstance(_vc, dict) and _vc.get("name") == model:
+                        _combo = _vc
+                        break
+                if _combo and isinstance(_combo.get("models"), list) and len(_combo["models"]) > 0:
+                    _models = _combo["models"]
+                    _first = _models[0]
+                    _fp = (str(_first.get("provider") or "")).strip().lower()
+                    _fm = (str(_first.get("model") or "")).strip()
+                    # Resolve primary provider base_url/api_key from custom_providers
+                    _fcust = _read_custom_providers()
+                    _b_url = ""
+                    _a_key = ""
+                    if _fp in _fcust:
+                        _b_url = _fcust[_fp].get("base_url", "")
+                        _a_key = _fcust[_fp].get("api_key", "")
+                    # Build fallbacks from remaining models
+                    _fb = []
+                    for _m in _models[1:]:
+                        _mp = (str(_m.get("provider") or "")).strip()
+                        _mm = (str(_m.get("model") or "")).strip()
+                        if not _mp or not _mm:
+                            continue
+                        _fb.append({"provider": _mp, "model": _mm})
+                    # Set primary
+                    provider = _fp
+                    model = _fm
+                    base_url = _b_url
+                    api_key = _a_key
+                    # Apply fallbacks if provided as a list; else use combo's
+                    if fallbacks is None:
+                        fallbacks = _fb if _fb else None
+                else:
+                    return False
+            else:
+                # Check if a custom provider matches as a prefix (e.g. "nvidia" → "nvidia-direct")
+                for cp_name, cp_entry in cust.items():
+                    if cp_name.startswith(provider.lower()):
+                        provider = cp_name
+                        base_url = cp_entry.get("base_url", "")
+                        api_key = cp_entry.get("api_key", "")
+                        break
     path = _profile_config_path(agent)
     if not os.path.exists(path):
         return False
@@ -1326,6 +1370,143 @@ def _ensure_custom_providers_block(profile_path, provider_name, base_url, api_ke
             lines[-1] += "\n"
         new_lines = lines + ["\n", "custom_providers:\n"] + entry_lines
     return _write_lines(profile_path, new_lines)
+
+
+# ---------------------------------------------------------------------------
+# 6) Virtual combos → OmniRoute sync
+# ---------------------------------------------------------------------------
+# Mapping MC provider → OmniRoute provider_id. OmniRoute knows a fixed set of
+# providers (mistral, nvidia, gemini, nara, sealion, aion, opencode...).
+# We map MC scan provider names to their OmniRoute equivalent.
+_MC_OMNI_MAP = {
+    "freellmapi": "nvidia",      # NVIDIA models via FreeLLM
+    "nous": "nvidia",            # nEmotron via Nous = NVIDIA backend
+    "openrouter": "nvidia",      # best effort: many openrouter models are nvidia/gemini
+    "lmstudio": "nvidia",        # local = nvidia models typically
+    "ajean": "mistral",          # ajean = Mistral models
+    "gemini": "gemini",
+    "omni-route": "omni-route",  # passthrough (shouldn't happen)
+}
+
+
+def _sync_omniroute_combos():
+    """Sync MC virtual_combos from mc_config.json to OmniRoute combos table.
+
+    For each virtual_combos entry {name, models:[{provider, model}]}, create or
+    update a matching combo in OmniRoute's SQLite. The combo ID must match the
+    model name so Hermes Agent (in profile) can request model='<combo_name>'
+    against OmniRoute via provider 'openai' + base_url OMR.
+
+    Provider names from MC scans are mapped via _MC_OMNI_MAP. Models whose
+    provider has no OmniRoute mapping are skipped (cannot route).
+
+    READ-ONLY from config.yaml: reads omni-route base_url + key_env from the
+    providers: block only to locate the OmniRoute SQLite path (fixed convention).
+    Does NOT modify config.yaml / .env.
+    """
+    import uuid, datetime
+    cfg = mc_backend.load_config()
+    combos = cfg.get("virtual_combos", [])
+    if not isinstance(combos, list):
+        combos = []
+
+    # Locate OmniRoute SQLite
+    omni_db = os.path.join(os.path.expanduser("~"), ".omniroute", "storage.sqlite")
+    if not os.path.isfile(omni_db):
+        return
+
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    new_uuid = str(uuid.uuid4())
+
+    # Read all combos data to find existing entries for sync
+    import sqlite3 as _sq
+    conn = _sq.connect(omni_db)
+    conn.row_factory = _sq.Row
+    cur = conn.cursor()
+    try:
+        # Fetch all existing combos to know which to update
+        cur.execute("SELECT id, name, data FROM combos")
+        existing = {json.loads(r["data"]).get("name") if r["data"] else r["name"]: r for r in cur.fetchall()}
+
+        for combo in combos:
+            if not isinstance(combo, dict):
+                continue
+            name = combo.get("name", "").strip()
+            if not name:
+                continue
+            models = combo.get("models", [])
+            if not isinstance(models, list):
+                continue
+
+            # Build OmniRoute model entries, mapping providers
+            omni_models = []
+            for m in models:
+                if not isinstance(m, dict):
+                    continue
+                mc_provider = (m.get("provider") or "").strip().lower()
+                mc_model = (m.get("model") or "").strip()
+                if not mc_provider or not mc_model:
+                    continue
+                omni_provider = _MC_OMNI_MAP.get(mc_provider)
+                if not omni_provider:
+                    continue  # can't route this provider via OmniRoute
+                # OmniRoute model id format: <provider_id>/<model_name>
+                omni_model_id = mc_model if "/" in mc_model else f"{omni_provider}/{mc_model}"
+                omni_models.append({
+                    "id": f"{name}-model-{len(omni_models)+1}-{omni_provider}-{mc_model.replace('/','-')[:64]}",
+                    "kind": "model",
+                    "model": omni_model_id,
+                    "providerId": omni_provider,
+                    "weight": 0,  # equal weight (round-robin within OmniRoute)
+                })
+
+            if not omni_models:
+                continue
+
+            combo_data = {
+                "name": name,
+                "models": omni_models,
+                "strategy": "auto",
+                "config": {
+                    "maxRetries": 2,
+                    "retryDelayMs": 1000,
+                    "maxMessagesForSummary": 30,
+                    "trackMetrics": True,
+                    "reasoningTokenBufferEnabled": True,
+                    "zeroLatencyOptimizationsEnabled": False,
+                    "candidatePool": list(set(m["providerId"] for m in omni_models)),
+                },
+                "system_message": "",
+                "id": existing.get(name, {}).get("id") if name in existing else new_uuid,
+                "isHidden": False,
+                "sortOrder": 1,
+                "createdAt": existing.get(name, {}).get("created_at") or now,
+                "updatedAt": now,
+                "version": 1,
+            }
+
+            data_json = json.dumps(combo_data, ensure_ascii=False)
+            if name in existing:
+                # Update existing
+                cur.execute("UPDATE combos SET data=?, updated_at=? WHERE id=?",
+                            (data_json, now, existing[name]["id"]))
+            else:
+                # Insert new
+                cur.execute("INSERT INTO combos (id, name, data, sort_order, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)",
+                            (combo_data["id"], name, data_json, now, now))
+
+        # Remove OmniRoute combos that no longer exist in MC virtual_combos
+        mc_names = {c.get("name", "").strip() for c in combos if isinstance(c, dict)}
+        for ex_name, ex_row in existing.items():
+            ex_data_name = ex_name
+            if ex_data_name and ex_data_name not in mc_names:
+                # only remove combos that look like MC virtual models (not hermes/manager etc.)
+                if ex_data_name not in ("hermes/manager", "manager"):
+                    cur.execute("DELETE FROM combos WHERE id=?", (ex_row["id"],))
+
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _read_model_block(profile_path):
