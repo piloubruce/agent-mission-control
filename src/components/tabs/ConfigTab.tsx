@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   SlidersHorizontal, Sun, Moon, Save, RotateCcw,
   RefreshCw, CheckCircle2, AlertTriangle, Keyboard,
-  GripVertical,
+  GripVertical, Github,
 } from 'lucide-react';
 import { TabId } from '../../types';
 import { useTheme } from '../../lib/theme';
@@ -144,6 +144,9 @@ export const ConfigTab: React.FC = () => {
   const [scanProvRefreshing, setScanProvRefreshing] = useState(false);
   const [backupList, setBackupList] = useState<Array<{name: string; size: number; mtime: number}>>([]);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // GitHub sync
+  const [gitBusy, setGitBusy] = useState<'push' | 'pull' | null>(null);
+  const [gitMsg, setGitMsg] = useState<string | null>(null);
   // Modèles scannés pour la création de combos virtuels
   const [scannedModels, setScannedModels] = useState<ScanModelResult[]>([]);
   // Modèles virtuels / combos (créés depuis scans)
@@ -396,6 +399,42 @@ const reload = async () => {
     const nextRows = mapToRows(DEFAULT_HOTKEYS, order);
     setRows(nextRows);
     void persist(nextRows, order, false);
+  };
+
+  const pushGitHub = async () => {
+    setGitBusy('push');
+    setGitMsg(null);
+    try {
+      const resp = await fetch('/api/git/push', { method: 'POST' });
+      const data = await resp.json();
+      if (resp.ok && data.ok) {
+        setGitMsg(`Push GitHub lancé : ${data.commit_msg || ''}`);
+      } else {
+        setGitMsg(data.error || `Erreur HTTP ${resp.status}`);
+      }
+    } catch (e) {
+      setGitMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGitBusy(null);
+    }
+  };
+
+  const pullGitHub = async () => {
+    setGitBusy('pull');
+    setGitMsg(null);
+    try {
+      const resp = await fetch('/api/git/pull', { method: 'POST' });
+      const data = await resp.json();
+      if (resp.ok && data.ok) {
+        setGitMsg(`Pull GitHub lancé : ${data.msg || ''}`);
+      } else {
+        setGitMsg(data.error || `Erreur HTTP ${resp.status}`);
+      }
+    } catch (e) {
+      setGitMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGitBusy(null);
+    }
   };
 
   // --- Drag & drop : réorganise la cellule from -> to (ordre persisté) ---
@@ -1024,6 +1063,47 @@ useEffect(() => {
         <div className={card}>
           <h3 className="text-stone-300 font-medium mb-4">Sauvegarde / Restauration</h3>
           <div className="space-y-4">
+
+            {/* --- GitHub --- */}
+            <div className="border border-stone-800 rounded-xl p-4 space-y-3">
+              <h4 className="text-sm text-stone-300 font-medium flex items-center gap-2">
+                <Github className="w-4 h-4 text-stone-400" />
+                GitHub
+              </h4>
+              <p className="text-xs text-stone-500">
+                Pousser les modifications du dashboard vers GitHub, ou réinstaller depuis GitHub.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={pushGitHub}
+                  disabled={gitBusy !== null}
+                  className={`${btn} bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 flex items-center gap-2 disabled:opacity-50`}
+                >
+                  <Github className="w-4 h-4" />
+                  {gitBusy === 'push' ? 'Push en cours…' : 'Pousser vers GitHub'}
+                </button>
+                <button
+                  onClick={pullGitHub}
+                  disabled={gitBusy !== null}
+                  className={`${btn} bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 flex items-center gap-2 disabled:opacity-50`}
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  {gitBusy === 'pull' ? 'Pull en cours…' : 'Installer depuis GitHub'}
+                </button>
+              </div>
+              {gitBusy && (
+                <div className="flex items-center gap-2 text-xs text-stone-400">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Opération en cours…
+                </div>
+              )}
+              {gitMsg && (
+                <div className="text-xs text-stone-300 bg-stone-900/60 border border-stone-800 rounded-lg px-3 py-2 whitespace-pre-wrap">
+                  {gitMsg}
+                </div>
+              )}
+            </div>
+
             {/* Créer un backup */}
             <div className="flex items-center gap-3">
               <button

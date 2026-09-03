@@ -7456,6 +7456,65 @@ def _read_dashboard_version():
         return "0.0.0"
 
 
+# ---------------------------------------------------------------------------
+# Git sync GitHub: push local MC changes, or pull+rebuild+restart from GitHub
+# ---------------------------------------------------------------------------
+def _git_push_script(commit_msg: str) -> str:
+    """Genere le script shell qui add/commit/push les modifs MC sur GitHub."""
+    repo_path = PROJECT_DIR
+    log_file = os.path.join("/tmp", "mc-git-push.log")
+    return f"""#!/usr/bin/env bash
+set -euo pipefail
+cd "{repo_path}"
+ts="$(date '+%Y-%m-%d %H:%M:%S')"
+echo "[$ts] Debut du push GitHub" >> {log_file}
+git add -A 2>> {log_file} || echo "[$ts] git add -A a échoué (non-bloquant)" >> {log_file}
+if git diff --cached --quiet 2>> {log_file}; then
+  echo "[$ts] Aucune modif a commiter" >> {log_file}
+else
+  git commit -m "{commit_msg}" 2>> {log_file} || echo "[$ts] commit échoué (non-bloquant)" >> {log_file}
+  git push origin main 2>> {log_file} || echo "[$ts] push échoué (non-bloquant)" >> {log_file}
+fi
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fin du push GitHub" >> {log_file}
+"""
+
+
+def _git_pull_script() -> str:
+    """Genere le script shell qui tire la version GitHub, rebuild le frontend
+    et redémarre le service MC pour deployer en production sur la VM."""
+    repo_path = PROJECT_DIR
+    log_file = os.path.join("/tmp", "mc-git-pull.log")
+    return f"""#!/usr/bin/env bash
+set -uo pipefail
+cd "{repo_path}"
+ts="$(date '+%Y-%m-%d %H:%M:%S')"
+echo "[$ts] Debut du pull/install GitHub" >> {log_file}
+# 1) Recuperer la version distante (avec merge fast-forward si possible)
+git pull --ff-only origin main >> {log_file} 2>&1 || {{
+  echo "[$ts] git pull a echoue (conflit ou pas de fast-forward)" >> {log_file}
+  exit 1
+}}
+# 2) Rebuild le frontend (vite build -> dist/ servi live)
+if command -v bun >/dev/null 2>&1; then
+  bun install >> {log_file} 2>&1
+  bun run build >> {log_file} 2>&1
+else
+  npm install >> {log_file} 2>&1
+  npm run build >> {log_file} 2>&1
+fi
+if [ $? -ne 0 ]; then
+  echo "[$ts] build frontend a echoue" >> {log_file}
+  exit 2
+fi
+# 3) Redemarrer proprement le service systemd (Restart=always -> respawn)
+systemctl --user restart hermes-mission-control >> {log_file} 2>&1 || {{
+  echo "[$ts] restart systemd a echoue" >> {log_file}
+  exit 3
+}}
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fin du pull/install GitHub (service redemarre)" >> {log_file}
+"""
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "HermesMissionControl/" + _read_dashboard_version()
 
@@ -8651,6 +8710,38 @@ class Handler(BaseHTTPRequestHandler):
                     self._send_json({"ok": False, "error": "cannot write config for %s" % agent}, code=400)
                     return
                 self._send_json({"ok": True, "disabled": disabled})
+            elif path == "/api/git/push":
+                # POST /api/git/push -> add, commit, et push de toutes les modifications
+                # du dashboard MC sur GitHub. Exécuté en arrière-plan pour ne pas
+                # bloquer le serveur HTTP.
+                try:
+                    _ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    _commit_msg = f"auto: snapshot MC {_ts}"
+                    script_path = os.path.join("/tmp", f"mc-git-push-{os.getpid()}.sh")
+                    with open(script_path, "w") as _fh:
+                        _fh.write(_git_push_script(_commit_msg))
+                    os.chmod(script_path, 0o700)
+                    _unit = f"mc-git-push-{os.getpid()}-{int(time.time())}"
+                    _mc_spawn_detached(_unit, script_path)
+                    self._send_json({"ok": True, "msg": "push GitHub lancé en arrière-plan", "commit_msg": _commit_msg})
+                except Exception as exc:
+                    self._send_json({"ok": False, "error": str(exc)}, code=500)
+                return
+            elif path == "/api/git/pull":
+                # POST /api/git/pull -> git pull + rebuild dist/ + restart service
+                # MC (deploie la version GitHub sur la VM). En arrière-plan pour
+                # ne pas bloquer le serveur HTTP (le restart tue ce process).
+                try:
+                    script_path = os.path.join("/tmp", f"mc-git-pull-{os.getpid()}.sh")
+                    with open(script_path, "w") as _fh:
+                        _fh.write(_git_pull_script())
+                    os.chmod(script_path, 0o700)
+                    _unit = f"mc-git-pull-{os.getpid()}-{int(time.time())}"
+                    _mc_spawn_detached(_unit, script_path)
+                    self._send_json({"ok": True, "msg": "installation depuis GitHub lancée en arrière-plan (pull + build + restart)"})
+                except Exception as exc:
+                    self._send_json({"ok": False, "error": str(exc)}, code=500)
+                return
             elif path == "/api/messages/send":
                 _a = (data.get("agent") or "").strip().lower()
                 if not _is_fleet_agent(_a):

@@ -358,11 +358,21 @@ export const ModelSelector: React.FC<{ agent: string }> = ({ agent }) => {
           (k) => !(cat.providers?.[k]?.count === 0) && next[k] === true,
         );
         const firstProvider = visibleProviders[0] ?? '';
+        // Detect if the agent's model belongs to an MC virtual combo
+        // (mc-provider has models = [{id: combo_name, description: ...}])
+        const mcVirtualModel = !!(m?.provider && m?.model &&
+          cat.providers?.mc_provider?.models?.some(
+            (cm: any) => cm.id === m.model || cm.id === m.provider + '/' + m.model
+          ));
         // Keep the agent's current provider if present in the catalog AND visible (coché).
         const initProvider =
-          m?.provider && cat.providers?.[m.provider] && next[m.provider] === true
+          (m?.provider && cat.providers?.[m.provider] && next[m.provider] === true)
+          && !mcVirtualModel
             ? m.provider
             : firstProvider;
+        // Set the display model: if it's an MC virtual combo, show the combo name;
+        // otherwise show the resolved model.
+        const initModel = mcVirtualModel ? m.model : (m?.model ?? '');
         setProvider(initProvider);
         if (m?.model) setFreeformModel(m.model);
       })
